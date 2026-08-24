@@ -7,18 +7,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root{
-    --paper: #F2F3F6;
-    --paper-dark: #E4E7EE;
-    --card: #FFFFFF;
-    --ink: #16233F;
-    --ink-soft: #52607C;
+    --paper: #0A1530;
+    --paper-dark: #13244A;
+    --card: #16264F;
+    --ink: #E7EAF2;
+    --ink-soft: #9AA6C3;
     --pine: #0F1F3E;
     --pine-dark: #0A1530;
     --brass: #C9A227;
-    --brass-dark: #A9861A;
-    --stamp: #B33A3A;
-    --teal: #0F1F3E;
-    --line: rgba(22,35,63,0.14);
+    --brass-dark: #E3BE4E;
+    --stamp: #D6585B;
+    --teal: #C9A227;
+    --line: rgba(231,234,242,0.14);
     --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
@@ -26,9 +26,7 @@
   *{box-sizing:border-box;}
   body{
     margin:0;
-    background:
-      linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 34px,
-      var(--paper);
+    background: var(--paper);
     color:var(--ink);
     font-family:var(--font-body);
     min-height:100vh;
@@ -45,7 +43,7 @@
   .masthead .crest{width:52px; height:52px; flex:none;}
   .masthead h1{
     font-family:var(--font-display); font-weight:700; letter-spacing:0.5px;
-    font-size:30px; margin:0; color:var(--pine-dark);
+    font-size:30px; margin:0; color:var(--brass-dark);
   }
   .masthead .sub{font-size:12px; letter-spacing:2.5px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
   .masthead .today{font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); text-align:right;}
@@ -59,7 +57,7 @@
     position:relative; top:1px;
   }
   nav.tabs button.active{
-    background:var(--card); color:var(--pine-dark); font-weight:700;
+    background:var(--card); color:var(--brass-dark); font-weight:700;
     border:1px solid var(--ink); border-bottom:3px solid var(--card);
   }
   .tabline{border-bottom:1px solid var(--ink); margin-bottom:22px;}
@@ -73,12 +71,12 @@
   .grid.two{grid-template-columns:1.3fr 1fr;}
   .card{
     background:var(--card); border:1px solid var(--line); border-radius:3px;
-    padding:16px 18px; box-shadow:0 1px 0 rgba(33,49,77,0.05);
+    padding:16px 18px; box-shadow:0 1px 0 rgba(0,0,0,0.25);
   }
-  .card h3{margin:0 0 12px; font-family:var(--font-display); font-size:15px; color:var(--pine-dark); letter-spacing:0.2px;}
+  .card h3{margin:0 0 12px; font-family:var(--font-display); font-size:15px; color:var(--brass-dark); letter-spacing:0.2px;}
   .kpi-card{position:relative; overflow:hidden;}
   .kpi-card .label{font-size:11px; text-transform:uppercase; letter-spacing:1.6px; color:var(--ink-soft);}
-  .kpi-card .value{font-family:var(--font-mono); font-size:30px; font-weight:600; margin-top:6px; color:var(--pine-dark);}
+  .kpi-card .value{font-family:var(--font-mono); font-size:30px; font-weight:600; margin-top:6px; color:var(--brass-dark);}
   .kpi-card .foot{font-size:11.5px; color:var(--ink-soft); margin-top:4px;}
 
   /* Bell stamp — signature element for punctuality */
@@ -101,7 +99,7 @@
   .alert.warn .dot{background:var(--stamp);}
   .alert.info .dot{background:var(--brass);}
   .alert .txt{font-size:13.5px; line-height:1.45;}
-  .alert .txt b{color:var(--pine-dark);}
+  .alert .txt b{color:var(--brass-dark);}
 
   .ai-box{border:1px solid var(--line); border-radius:3px; padding:14px 16px; background:var(--paper-dark); margin-top:12px;}
   .ai-item{font-size:13.5px; line-height:1.5; padding:8px 0; border-bottom:1px dashed var(--line);}
@@ -110,10 +108,10 @@
 
   button.primary{
     font-family:var(--font-display); font-weight:700; letter-spacing:0.3px; font-size:13.5px;
-    background:var(--pine); color:var(--paper); border:none; padding:10px 18px; border-radius:3px;
+    background:var(--brass); color:var(--pine-dark); border:none; padding:10px 18px; border-radius:3px;
     cursor:pointer;
   }
-  button.primary:hover{background:var(--pine-dark);}
+  button.primary:hover{background:#B08D22;}
   button.primary:disabled{opacity:0.55; cursor:wait;}
   button.ghost{
     font-family:var(--font-body); font-size:12.5px; background:transparent; border:1px solid var(--line);
@@ -128,7 +126,7 @@
   label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--ink-soft); margin-bottom:5px;}
   input, select, textarea{
     width:100%; font-family:var(--font-mono); font-size:13.5px; padding:8px 9px;
-    border:1px solid var(--line); border-radius:3px; background:#fff; color:var(--ink);
+    border:1px solid var(--line); border-radius:3px; background:#fff; color:#16233F;
   }
   textarea{font-family:var(--font-body); resize:vertical; min-height:52px;}
   .schedule-days{display:flex; gap:8px; flex-wrap:wrap;}
@@ -216,7 +214,7 @@
 
   <!-- LOG SESSION -->
   <section class="view" id="view-log">
-    <div class="note">If a calendar bridge URL is set under <b>Settings</b>, expected start time is pulled live from your Google Calendar (matched by class name in the event title). If no matching event is found for that day, it falls back to the manual weekly schedule set under "Classes &amp; Schedule".</div>
+    <div class="note">Expected start time is pulled live from your Google Calendar. Matching ignores the last " - " segment of the event title (your room name, since that can change week to week) — so a class named <b>Grade 4 - English- Ph/Online</b> matches an event titled <b>Grade 4 - English- Ph/Online - Alpha</b> or any other room. If no matching event is found for that day, it falls back to the manual weekly schedule set under "Classes &amp; Schedule".</div>
     <div class="card">
       <h3>Log Today's Session</h3>
       <form class="entry" id="sessionForm">
@@ -502,6 +500,16 @@ function toHHMM(isoOrDateStr){
   return d.toTimeString().slice(0,5);
 }
 
+function roomlessTitle(title){
+  // Calendar titles look like "Grade 4 - English- Ph/Online - Alpha", where
+  // the last " - " segment is the classroom name and can change week to
+  // week. Drop it before comparing against the stored class name.
+  if(!title) return title;
+  const parts = title.split(' - ');
+  if(parts.length <= 1) return title.trim();
+  return parts.slice(0, -1).join(' - ').trim();
+}
+
 async function fetchCalendarScheduleFor(dateVal){
   if(!settings.backendUrl) return null;
   try{
@@ -526,7 +534,10 @@ async function updateExpectedStart(){
   const events = await fetchCalendarScheduleFor(dateVal);
 
   if(events){
-    const match = events.find(ev => ev.title && ev.title.toLowerCase().includes(cls.name.toLowerCase()));
+    const match = events.find(ev => {
+      const base = roomlessTitle(ev.title);
+      return base && base.toLowerCase().includes(cls.name.toLowerCase());
+    });
     if(match){
       const hhmm = toHHMM(match.start);
       if(hhmm){
@@ -848,14 +859,17 @@ function renderAttendanceChart(){
   attendanceChart = new Chart(ctx, {
     type:'bar',
     data:{ labels, datasets:[
-      {label:'Physical', data:physical, backgroundColor:'#0F1F3E'},
+      {label:'Physical', data:physical, backgroundColor:'#5D7BB5'},
       {label:'Online', data:online, backgroundColor:'#C9A227'},
-      {label:'Absent', data:absent, backgroundColor:'#B33A3A'}
+      {label:'Absent', data:absent, backgroundColor:'#D6585B'}
     ]},
     options:{
       responsive:true,
-      plugins:{legend:{position:'bottom', labels:{font:{size:11}}}},
-      scales:{ x:{stacked:true, ticks:{font:{size:9}}}, y:{stacked:true, beginAtZero:true} }
+      plugins:{legend:{position:'bottom', labels:{font:{size:11}, color:'#9AA6C3'}}},
+      scales:{
+        x:{stacked:true, ticks:{font:{size:9}, color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}},
+        y:{stacked:true, beginAtZero:true, ticks:{color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}}
+      }
     }
   });
 }
@@ -870,9 +884,12 @@ function renderAdmissionsChart(){
     type:'line',
     data:{ labels: months, datasets:[{
       label:'New admissions', data: months.map(m=>byMonth[m]),
-      borderColor:'#0F1F3E', backgroundColor:'rgba(15,31,62,0.12)', fill:true, tension:0.25
+      borderColor:'#C9A227', backgroundColor:'rgba(201,162,39,0.15)', fill:true, tension:0.25
     }]},
-    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}} } }
+    options:{
+      responsive:true, plugins:{legend:{display:false}},
+      scales:{ y:{beginAtZero:true, ticks:{stepSize:1, color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}}, x:{ticks:{color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}} }
+    }
   });
 }
 

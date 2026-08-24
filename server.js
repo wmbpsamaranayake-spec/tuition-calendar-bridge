@@ -191,7 +191,7 @@ async function start() {
     console.error('MONGODB_URI is not set. Add it in Render environment variables.');
     process.exit(1);
   }
-  const client = new MongoClient(process.env.MONGODB_URI);
+  const client = new MongoClient(process.env.MONGODB_URI, { family: 4 });
   await client.connect();
   const dbName = process.env.DB_NAME || 'tuition_center';
   db = client.db(dbName);

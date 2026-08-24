@@ -417,7 +417,7 @@ let sessions = [];
 let admissions = [];
 let settings = { backendUrl: '' };
 let attendanceChart, admissionsChart;
-let currentExpected = { value: null, source: null }; // source: 'calendar' | 'manual'
+let currentExpected = { value: null, source: null, finish: null }; // source: 'calendar' | 'manual'
 
 const todayLabel = document.getElementById('todayLabel');
 todayLabel.textContent = new Date().toLocaleDateString(undefined,{weekday:'long', year:'numeric', month:'long', day:'numeric'});
@@ -568,7 +568,7 @@ async function updateExpectedStart(){
   const cls = classes.find(c=>c.id === document.getElementById('s_class').value);
   const dateVal = document.getElementById('s_date').value;
   const field = document.getElementById('s_expected');
-  currentExpected = { value: null, source: null };
+  currentExpected = { value: null, source: null, finish: null };
   if(!cls || !dateVal){ field.value=''; return; }
 
   field.value = 'Checking calendar…';
@@ -589,19 +589,21 @@ async function updateExpectedStart(){
     if(match){
       const hhmm = toHHMM(match.start);
       if(hhmm){
-        currentExpected = { value: hhmm, source: 'calendar' };
+        currentExpected = { value: hhmm, source: 'calendar', finish: toHHMM(match.end) };
         field.value = `${hhmm}  (from Google Calendar: "${match.title}")`;
         return;
       }
     }
   }
 
-  // Fall back to the manually-set weekly schedule.
+  // Fall back to the manually-set weekly schedule. No expected finish
+  // time is available here (only a start time is stored per weekday),
+  // so overtime warnings only apply to calendar-matched sessions.
   const dow = new Date(dateVal+'T00:00:00').getDay();
   const dayKey = Object.keys(DAY_INDEX).find(k=>DAY_INDEX[k]===dow);
   const t = cls.schedule && cls.schedule[dayKey];
   if(t){
-    currentExpected = { value: t, source: 'manual' };
+    currentExpected = { value: t, source: 'manual', finish: null };
     field.value = `${t}  (from manual weekly schedule${settings.backendUrl ? ' — no matching calendar event found' : ''})`;
   }else{
     field.value = 'Not scheduled this day';
@@ -702,6 +704,7 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
     classId: cls ? cls.id : null,
     date: dateVal,
     expectedStart: currentExpected.value || null,
+    expectedFinish: currentExpected.finish || null,
     expectedSource: currentExpected.source || null,
     actualStart: document.getElementById('s_actualStart').value,
     actualFinish: document.getElementById('s_actualFinish').value,
@@ -714,7 +717,7 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
   e.target.reset();
   document.getElementById('s_date').valueAsDate = new Date();
   document.getElementById('s_expected').value='';
-  currentExpected = { value: null, source: null };
+  currentExpected = { value: null, source: null, finish: null };
   renderSessionsTable();
 });
 

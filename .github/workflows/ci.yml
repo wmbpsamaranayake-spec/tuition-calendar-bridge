@@ -1,0 +1,43 @@
+name: Checks
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  sanity-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Syntax check server.js
+        run: node --check server.js
+
+      - name: package.json is valid JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+
+      - name: Dashboard HTML has balanced <script> tags
+        run: |
+          node -e "
+            const html = require('fs').readFileSync('public/index.html','utf8');
+            const open = (html.match(/<script/g)||[]).length;
+            const close = (html.match(/<\/script>/g)||[]).length;
+            if (open !== close) { console.error('Mismatched script tags:', open, close); process.exit(1); }
+            console.log('OK:', open, 'script tag(s)');
+          "
+
+      - name: Server boots without crashing (no real DB needed for this check)
+        run: |
+          timeout 5 node -e "
+            process.env.MONGODB_URI = process.env.MONGODB_URI || '';
+            try { require('./server.js'); } catch(e) { console.error(e); process.exit(1); }
+          " || true

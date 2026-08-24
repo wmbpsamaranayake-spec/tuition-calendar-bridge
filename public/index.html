@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Register — Tuition Operations Ledger</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper: #EDE6D6;
+    --paper-dark: #E1D7BE;
+    --card: #F7F3E8;
+    --ink: #21314D;
+    --ink-soft: #4B5A72;
+    --pine: #1F3D2B;
+    --pine-dark: #16301F;
+    --brass: #C9A227;
+    --brass-dark: #a9861a;
+    --stamp: #B33A3A;
+    --teal: #3E6259;
+    --line: rgba(33,49,77,0.16);
+    --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--line) 1px, transparent 1px) 0 0/100% 34px,
+      var(--paper);
+    color:var(--ink);
+    font-family:var(--font-body);
+    min-height:100vh;
+  }
+  .app{max-width:1180px;margin:0 auto;padding:28px 22px 80px;}
+
+  /* Header */
+  header.masthead{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom:3px double var(--ink);
+    padding-bottom:14px; margin-bottom:6px;
+  }
+  .masthead h1{
+    font-family:var(--font-display); font-weight:700; letter-spacing:0.5px;
+    font-size:30px; margin:0; color:var(--pine-dark);
+  }
+  .masthead .sub{font-size:12px; letter-spacing:2.5px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
+  .masthead .today{font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); text-align:right;}
+
+  /* Tabs styled as index folder tabs */
+  nav.tabs{display:flex; gap:4px; margin:18px 0 22px; flex-wrap:wrap;}
+  nav.tabs button{
+    font-family:var(--font-display); font-size:14px; letter-spacing:0.3px;
+    background:var(--paper-dark); color:var(--ink-soft); border:1px solid var(--line);
+    border-bottom:none; padding:9px 18px 8px; cursor:pointer; border-radius:6px 6px 0 0;
+    position:relative; top:1px;
+  }
+  nav.tabs button.active{
+    background:var(--card); color:var(--pine-dark); font-weight:700;
+    border:1px solid var(--ink); border-bottom:3px solid var(--card);
+  }
+  .tabline{border-bottom:1px solid var(--ink); margin-bottom:22px;}
+
+  section.view{display:none;}
+  section.view.active{display:block;}
+
+  /* Cards */
+  .grid{display:grid; gap:16px;}
+  .grid.kpi{grid-template-columns:repeat(4,1fr);}
+  .grid.two{grid-template-columns:1.3fr 1fr;}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:3px;
+    padding:16px 18px; box-shadow:0 1px 0 rgba(33,49,77,0.05);
+  }
+  .card h3{margin:0 0 12px; font-family:var(--font-display); font-size:15px; color:var(--pine-dark); letter-spacing:0.2px;}
+  .kpi-card{position:relative; overflow:hidden;}
+  .kpi-card .label{font-size:11px; text-transform:uppercase; letter-spacing:1.6px; color:var(--ink-soft);}
+  .kpi-card .value{font-family:var(--font-mono); font-size:30px; font-weight:600; margin-top:6px; color:var(--pine-dark);}
+  .kpi-card .foot{font-size:11.5px; color:var(--ink-soft); margin-top:4px;}
+
+  /* Bell stamp — signature element for punctuality */
+  .stamp-row{display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px dashed var(--line);}
+  .stamp-row:last-child{border-bottom:none;}
+  .stamp-name{font-weight:600; font-size:14px;}
+  .stamp-sub{font-size:11.5px; color:var(--ink-soft); font-family:var(--font-mono);}
+  .stamp{
+    font-family:var(--font-display); font-weight:700; font-size:11.5px; letter-spacing:1px;
+    text-transform:uppercase; padding:6px 12px; border-radius:50%/50%; border:2.5px solid;
+    transform:rotate(-6deg); white-space:nowrap;
+  }
+  .stamp.ontime{color:var(--teal); border-color:var(--teal);}
+  .stamp.late{color:var(--stamp); border-color:var(--stamp);}
+
+  /* Alerts */
+  .alert{display:flex; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); align-items:flex-start;}
+  .alert:last-child{border-bottom:none;}
+  .alert .dot{width:9px;height:9px;border-radius:50%;margin-top:5px;flex:none;}
+  .alert.warn .dot{background:var(--stamp);}
+  .alert.info .dot{background:var(--brass);}
+  .alert .txt{font-size:13.5px; line-height:1.45;}
+  .alert .txt b{color:var(--pine-dark);}
+
+  .ai-box{border:1px solid var(--line); border-radius:3px; padding:14px 16px; background:var(--paper-dark); margin-top:12px;}
+  .ai-item{font-size:13.5px; line-height:1.5; padding:8px 0; border-bottom:1px dashed var(--line);}
+  .ai-item:last-child{border-bottom:none;}
+  .ai-item .tag{font-family:var(--font-mono); font-size:10.5px; text-transform:uppercase; letter-spacing:1px; color:var(--brass-dark); margin-right:7px;}
+
+  button.primary{
+    font-family:var(--font-display); font-weight:700; letter-spacing:0.3px; font-size:13.5px;
+    background:var(--pine); color:var(--paper); border:none; padding:10px 18px; border-radius:3px;
+    cursor:pointer;
+  }
+  button.primary:hover{background:var(--pine-dark);}
+  button.primary:disabled{opacity:0.55; cursor:wait;}
+  button.ghost{
+    font-family:var(--font-body); font-size:12.5px; background:transparent; border:1px solid var(--line);
+    color:var(--ink-soft); padding:6px 11px; border-radius:3px; cursor:pointer;
+  }
+  button.ghost:hover{border-color:var(--ink); color:var(--ink);}
+  button.danger{color:var(--stamp); border-color:var(--stamp);}
+
+  /* Forms */
+  form.entry{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
+  form.entry .full{grid-column:1/-1;}
+  label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--ink-soft); margin-bottom:5px;}
+  input, select, textarea{
+    width:100%; font-family:var(--font-mono); font-size:13.5px; padding:8px 9px;
+    border:1px solid var(--line); border-radius:3px; background:#fff; color:var(--ink);
+  }
+  textarea{font-family:var(--font-body); resize:vertical; min-height:52px;}
+  .schedule-days{display:flex; gap:8px; flex-wrap:wrap;}
+  .schedule-days .day{border:1px solid var(--line); border-radius:3px; padding:8px; width:98px;}
+  .schedule-days .day label{margin-bottom:6px;}
+  .schedule-days .day input[type=checkbox]{width:auto; margin-right:6px;}
+  .schedule-days .day input[type=time]{margin-top:6px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); padding:8px 8px; border-bottom:2px solid var(--ink);}
+  td{padding:9px 8px; border-bottom:1px solid var(--line); font-family:var(--font-mono);}
+  td.txt{font-family:var(--font-body);}
+  tr:last-child td{border-bottom:none;}
+
+  .empty{padding:30px 10px; text-align:center; color:var(--ink-soft); font-size:13.5px;}
+  .note{font-size:12px; color:var(--ink-soft); background:var(--paper-dark); border-left:3px solid var(--brass); padding:9px 12px; border-radius:2px; margin-bottom:16px; line-height:1.5;}
+  .toprow{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;}
+  .chip{display:inline-block; font-family:var(--font-mono); font-size:11px; padding:2px 8px; border-radius:10px; background:var(--paper-dark); color:var(--ink-soft); margin-left:6px;}
+  canvas{max-height:260px;}
+  @media(max-width:820px){
+    .grid.kpi{grid-template-columns:repeat(2,1fr);}
+    .grid.two{grid-template-columns:1fr;}
+    form.entry{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="masthead">
+    <div>
+      <h1>The Register</h1>
+      <div class="sub">Tuition Operations Ledger</div>
+    </div>
+    <div class="today" id="todayLabel"></div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="log">Log Session</button>
+    <button data-view="classes">Classes &amp; Schedule</button>
+    <button data-view="admissions">Admissions</button>
+    <button data-view="teachers">Teachers</button>
+    <button data-view="settings">Settings</button>
+  </nav>
+  <div class="tabline"></div>
+
+  <!-- DASHBOARD -->
+  <section class="view active" id="view-dashboard">
+    <div class="grid kpi" id="kpiGrid" style="margin-bottom:18px;"></div>
+
+    <div class="grid two" style="margin-bottom:18px;">
+      <div class="card">
+        <h3>Punctuality — Bell Register</h3>
+        <div id="punctualityList"></div>
+      </div>
+      <div class="card">
+        <h3>Alerts</h3>
+        <div id="alertsList"></div>
+      </div>
+    </div>
+
+    <div class="grid two" style="margin-bottom:18px;">
+      <div class="card">
+        <h3>Attendance Trend (last 14 sessions logged)</h3>
+        <canvas id="attendanceChart"></canvas>
+      </div>
+      <div class="card">
+        <h3>New Admissions by Month</h3>
+        <canvas id="admissionsChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toprow">
+        <h3 style="margin:0;">AI Insights &amp; Recommendations</h3>
+        <button class="primary" id="generateAiBtn">Generate insights</button>
+      </div>
+      <div id="aiOutput" class="empty">No insights generated yet for this data. Click "Generate insights" once you've logged a few sessions.</div>
+    </div>
+  </section>
+
+  <!-- LOG SESSION -->
+  <section class="view" id="view-log">
+    <div class="note">If a calendar bridge URL is set under <b>Settings</b>, expected start time is pulled live from your Google Calendar (matched by class name in the event title). If no matching event is found for that day, it falls back to the manual weekly schedule set under "Classes &amp; Schedule".</div>
+    <div class="card">
+      <h3>Log Today's Session</h3>
+      <form class="entry" id="sessionForm">
+        <div>
+          <label>Date</label>
+          <input type="date" id="s_date" required>
+        </div>
+        <div>
+          <label>Class</label>
+          <select id="s_class" required></select>
+        </div>
+        <div>
+          <label>Expected start (from schedule)</label>
+          <input type="text" id="s_expected" readonly>
+        </div>
+        <div>
+          <label>Actual start time</label>
+          <input type="time" id="s_actualStart" required>
+        </div>
+        <div>
+          <label>Actual finish time</label>
+          <input type="time" id="s_actualFinish" required>
+        </div>
+        <div></div>
+        <div>
+          <label>Physical attendance</label>
+          <input type="number" min="0" id="s_physical" value="0" required>
+        </div>
+        <div>
+          <label>Online attendance</label>
+          <input type="number" min="0" id="s_online" value="0" required>
+        </div>
+        <div>
+          <label>Absent count</label>
+          <input type="number" min="0" id="s_absent" value="0" required>
+        </div>
+        <div class="full">
+          <label>Notes (optional)</label>
+          <textarea id="s_notes" placeholder="Anything worth flagging about today's class..."></textarea>
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Save session</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="toprow"><h3 style="margin:0;">Recent Sessions</h3></div>
+      <div id="sessionsTableWrap"></div>
+    </div>
+  </section>
+
+  <!-- CLASSES & SCHEDULE -->
+  <section class="view" id="view-classes">
+    <div class="card">
+      <h3>Add a Class</h3>
+      <form class="entry" id="classForm">
+        <div>
+          <label>Class name</label>
+          <input type="text" id="c_name" placeholder="e.g. Grade 10 Mathematics" required>
+        </div>
+        <div>
+          <label>Subject</label>
+          <input type="text" id="c_subject" placeholder="e.g. Mathematics" required>
+        </div>
+        <div>
+          <label>Teacher</label>
+          <select id="c_teacher" required></select>
+        </div>
+        <div class="full">
+          <label>Weekly schedule — tick the days this class runs and set its start time</label>
+          <div class="schedule-days" id="scheduleDays"></div>
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Save class</button>
+        </div>
+      </form>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>All Classes</h3>
+      <div id="classesTableWrap"></div>
+    </div>
+  </section>
+
+  <!-- ADMISSIONS -->
+  <section class="view" id="view-admissions">
+    <div class="card">
+      <h3>Record a New Admission</h3>
+      <form class="entry" id="admissionForm">
+        <div>
+          <label>Student name</label>
+          <input type="text" id="a_name" required>
+        </div>
+        <div>
+          <label>Class</label>
+          <select id="a_class" required></select>
+        </div>
+        <div>
+          <label>Date joined</label>
+          <input type="date" id="a_date" required>
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Save admission</button>
+        </div>
+      </form>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>Admissions Log</h3>
+      <div id="admissionsTableWrap"></div>
+    </div>
+  </section>
+
+  <!-- TEACHERS -->
+  <section class="view" id="view-teachers">
+    <div class="card">
+      <h3>Add a Teacher</h3>
+      <form class="entry" id="teacherForm">
+        <div>
+          <label>Teacher name</label>
+          <input type="text" id="t_name" required>
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Save teacher</button>
+        </div>
+      </form>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>All Teachers</h3>
+      <div id="teachersTableWrap"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings">
+    <div class="card">
+      <h3>Google Calendar Connection</h3>
+      <div class="note">If you're viewing this dashboard at its own server address, this is already connected automatically. Only fill this in if you're hosting the dashboard page somewhere separate from the server.</div>
+      <form class="entry" id="settingsForm">
+        <div class="full">
+          <label>Calendar bridge URL</label>
+          <input type="text" id="set_backendUrl" placeholder="https://tuition-calendar-bridge-xxxx.onrender.com">
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Save</button>
+          <button type="button" class="ghost" id="testConnectionBtn" style="margin-left:8px;">Test connection</button>
+        </div>
+      </form>
+      <div id="connectionStatus" style="margin-top:12px; font-size:13px;"></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const DAYS = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+const DAY_INDEX = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
+
+let teachers = [];
+let classes = [];
+let sessions = [];
+let admissions = [];
+let settings = { backendUrl: '' };
+let attendanceChart, admissionsChart;
+let currentExpected = { value: null, source: null }; // source: 'calendar' | 'manual'
+
+const todayLabel = document.getElementById('todayLabel');
+todayLabel.textContent = new Date().toLocaleDateString(undefined,{weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
+// ---------- Storage helpers ----------
+// All business data (teachers, classes, sessions, admissions) lives on
+// YOUR server (the same one that talks to Google Calendar), so multiple
+// staff on different computers see the same shared data. Only the
+// backend URL itself is remembered per-device, in this browser.
+function getBackendUrl(){
+  const saved = (localStorage.getItem('tuition_backend_url') || '').trim();
+  if(saved) return saved;
+  // If this page is being served by the backend itself (not opened as a
+  // local file), default to "this same server" — no setup needed.
+  if(window.location.protocol !== 'file:'){
+    return window.location.origin;
+  }
+  return '';
+}
+function setBackendUrl(url){
+  localStorage.setItem('tuition_backend_url', url);
+  settings.backendUrl = url;
+}
+function apiBase(){
+  return getBackendUrl().replace(/\/$/,'');
+}
+
+async function apiGet(collection){
+  const base = apiBase();
+  if(!base) return [];
+  try{
+    const res = await fetch(`${base}/api/${collection}`);
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){
+    console.error(`Could not load ${collection}:`, e);
+    return [];
+  }
+}
+async function apiAdd(collection, item){
+  const base = apiBase();
+  if(!base) throw new Error('no_backend');
+  const res = await fetch(`${base}/api/${collection}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(item)
+  });
+  if(!res.ok) throw new Error('save_failed');
+  return await res.json();
+}
+async function apiDelete(collection, id){
+  const base = apiBase();
+  if(!base) throw new Error('no_backend');
+  const res = await fetch(`${base}/api/${collection}/${id}`, { method:'DELETE' });
+  if(!res.ok) throw new Error('delete_failed');
+}
+
+async function loadAll(){
+  settings.backendUrl = getBackendUrl();
+  if(!settings.backendUrl){
+    teachers = []; classes = []; sessions = []; admissions = [];
+    return;
+  }
+  [teachers, classes, sessions, admissions] = await Promise.all([
+    apiGet('teachers'), apiGet('classes'), apiGet('sessions'), apiGet('admissions')
+  ]);
+}
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// ---------- Tabs ----------
+document.getElementById('tabs').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-view]');
+  if(!btn) return;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('section.view').forEach(s=>s.classList.remove('active'));
+  document.getElementById('view-'+btn.dataset.view).classList.add('active');
+  if(btn.dataset.view === 'dashboard') renderDashboard();
+});
+
+// ---------- Init forms ----------
+function initScheduleDaysInput(){
+  const wrap = document.getElementById('scheduleDays');
+  wrap.innerHTML = DAYS.map(([k,label])=>`
+    <div class="day">
+      <label><input type="checkbox" data-day="${k}" class="dayCheck"> ${label}</label>
+      <input type="time" data-day="${k}" class="dayTime" disabled>
+    </div>`).join('');
+  wrap.querySelectorAll('.dayCheck').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const t = wrap.querySelector(`.dayTime[data-day="${cb.dataset.day}"]`);
+      t.disabled = !cb.checked;
+      if(!cb.checked) t.value = '';
+    });
+  });
+}
+
+function populateTeacherSelect(){
+  const sel = document.getElementById('c_teacher');
+  sel.innerHTML = teachers.length ? teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('') : '<option value="">Add a teacher first</option>';
+}
+function populateClassSelects(){
+  const opts = classes.length ? classes.map(c=>`<option value="${c.id}">${c.name}</option>`).join('') : '<option value="">Add a class first</option>';
+  document.getElementById('s_class').innerHTML = opts;
+  document.getElementById('a_class').innerHTML = opts;
+}
+
+document.getElementById('s_date').valueAsDate = new Date();
+document.getElementById('a_date').valueAsDate = new Date();
+
+document.getElementById('s_class').addEventListener('change', updateExpectedStart);
+document.getElementById('s_date').addEventListener('change', updateExpectedStart);
+
+function toHHMM(isoOrDateStr){
+  // Handles full ISO datetimes from Google Calendar; returns local HH:MM.
+  const d = new Date(isoOrDateStr);
+  if(isNaN(d.getTime())) return null;
+  return d.toTimeString().slice(0,5);
+}
+
+async function fetchCalendarScheduleFor(dateVal){
+  if(!settings.backendUrl) return null;
+  try{
+    const res = await fetch(`${settings.backendUrl.replace(/\/$/,'')}/api/schedule?date=${dateVal}`, { signal: AbortSignal.timeout ? AbortSignal.timeout(6000) : undefined });
+    if(!res.ok) return null;
+    const data = await res.json();
+    return data.events || [];
+  }catch(e){
+    console.warn('Calendar bridge unreachable:', e);
+    return null;
+  }
+}
+
+async function updateExpectedStart(){
+  const cls = classes.find(c=>c.id === document.getElementById('s_class').value);
+  const dateVal = document.getElementById('s_date').value;
+  const field = document.getElementById('s_expected');
+  currentExpected = { value: null, source: null };
+  if(!cls || !dateVal){ field.value=''; return; }
+
+  field.value = 'Checking calendar…';
+  const events = await fetchCalendarScheduleFor(dateVal);
+
+  if(events){
+    const match = events.find(ev => ev.title && ev.title.toLowerCase().includes(cls.name.toLowerCase()));
+    if(match){
+      const hhmm = toHHMM(match.start);
+      if(hhmm){
+        currentExpected = { value: hhmm, source: 'calendar' };
+        field.value = `${hhmm}  (from Google Calendar: "${match.title}")`;
+        return;
+      }
+    }
+  }
+
+  // Fall back to the manually-set weekly schedule.
+  const dow = new Date(dateVal+'T00:00:00').getDay();
+  const dayKey = Object.keys(DAY_INDEX).find(k=>DAY_INDEX[k]===dow);
+  const t = cls.schedule && cls.schedule[dayKey];
+  if(t){
+    currentExpected = { value: t, source: 'manual' };
+    field.value = `${t}  (from manual weekly schedule${settings.backendUrl ? ' — no matching calendar event found' : ''})`;
+  }else{
+    field.value = 'Not scheduled this day';
+  }
+}
+
+// ---------- Settings tab ----------
+document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  setBackendUrl(document.getElementById('set_backendUrl').value.trim());
+  document.getElementById('connectionStatus').innerHTML = '<span style="color:var(--teal);">Saved. Reloading your data…</span>';
+  await loadAll();
+  renderAll();
+});
+
+document.getElementById('testConnectionBtn').addEventListener('click', async ()=>{
+  const url = document.getElementById('set_backendUrl').value.trim();
+  const status = document.getElementById('connectionStatus');
+  if(!url){ status.innerHTML = '<span style="color:var(--stamp);">Enter a URL first.</span>'; return; }
+  status.textContent = 'Testing…';
+  try{
+    const today = new Date().toISOString().slice(0,10);
+    const res = await fetch(`${url.replace(/\/$/,'')}/api/schedule?date=${today}`);
+    if(res.status === 401){
+      status.innerHTML = '<span style="color:var(--brass-dark);">Server reachable, but not yet connected to Google — visit the server URL directly and click "Connect Google Calendar".</span>';
+    }else if(res.ok){
+      const data = await res.json();
+      status.innerHTML = `<span style="color:var(--teal);">Connected — found ${data.events ? data.events.length : 0} calendar event(s) for today.</span>`;
+    }else{
+      status.innerHTML = '<span style="color:var(--stamp);">Server responded with an error. Double-check the URL.</span>';
+    }
+  }catch(e){
+    status.innerHTML = '<span style="color:var(--stamp);">Could not reach that URL. Check it\'s correct and the server is deployed.</span>';
+  }
+});
+
+// ---------- Class form ----------
+document.getElementById('classForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!requireBackend()) return;
+  const schedule = {};
+  document.querySelectorAll('.dayCheck').forEach(cb=>{
+    if(cb.checked){
+      const t = document.querySelector(`.dayTime[data-day="${cb.dataset.day}"]`).value;
+      if(t) schedule[cb.dataset.day] = t;
+    }
+  });
+  const item = await apiAdd('classes', {
+    name: document.getElementById('c_name').value.trim(),
+    subject: document.getElementById('c_subject').value.trim(),
+    teacherId: document.getElementById('c_teacher').value,
+    schedule
+  });
+  classes.push(item);
+  e.target.reset();
+  initScheduleDaysInput();
+  populateClassSelects();
+  renderClassesTable();
+});
+
+// ---------- Teacher form ----------
+document.getElementById('teacherForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!requireBackend()) return;
+  const item = await apiAdd('teachers', { name: document.getElementById('t_name').value.trim() });
+  teachers.push(item);
+  e.target.reset();
+  populateTeacherSelect();
+  renderTeachersTable();
+});
+
+// ---------- Admission form ----------
+document.getElementById('admissionForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!requireBackend()) return;
+  const item = await apiAdd('admissions', {
+    name: document.getElementById('a_name').value.trim(),
+    classId: document.getElementById('a_class').value,
+    date: document.getElementById('a_date').value
+  });
+  admissions.push(item);
+  e.target.reset();
+  document.getElementById('a_date').valueAsDate = new Date();
+  renderAdmissionsTable();
+});
+
+// ---------- Session form ----------
+document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!requireBackend()) return;
+  const cls = classes.find(c=>c.id === document.getElementById('s_class').value);
+  const dateVal = document.getElementById('s_date').value;
+
+  const item = await apiAdd('sessions', {
+    classId: cls ? cls.id : null,
+    date: dateVal,
+    expectedStart: currentExpected.value || null,
+    expectedSource: currentExpected.source || null,
+    actualStart: document.getElementById('s_actualStart').value,
+    actualFinish: document.getElementById('s_actualFinish').value,
+    physical: parseInt(document.getElementById('s_physical').value)||0,
+    online: parseInt(document.getElementById('s_online').value)||0,
+    absent: parseInt(document.getElementById('s_absent').value)||0,
+    notes: document.getElementById('s_notes').value.trim()
+  });
+  sessions.push(item);
+  e.target.reset();
+  document.getElementById('s_date').valueAsDate = new Date();
+  document.getElementById('s_expected').value='';
+  currentExpected = { value: null, source: null };
+  renderSessionsTable();
+});
+
+// ---------- Delete helpers ----------
+async function deleteItem(arrName, id){
+  if(!requireBackend()) return;
+  try{
+    await apiDelete(arrName, id);
+    const map = {teachers, classes, sessions, admissions};
+    const arr = map[arrName];
+    const idx = arr.findIndex(x=>x.id===id);
+    if(idx>-1) arr.splice(idx,1);
+    renderAll();
+  }catch(e){
+    alert('Could not delete — check your connection to the server.');
+  }
+}
+window.deleteItem = deleteItem;
+
+function requireBackend(){
+  if(!getBackendUrl()){
+    alert('Set your server URL in the Settings tab first — that\'s where all your data is stored.');
+    return false;
+  }
+  return true;
+}
+
+// ---------- Render tables ----------
+function className(id){ const c = classes.find(x=>x.id===id); return c ? c.name : '—'; }
+function teacherName(id){ const t = teachers.find(x=>x.id===id); return t ? t.name : '—'; }
+function classTeacherName(classId){ const c = classes.find(x=>x.id===classId); return c ? teacherName(c.teacherId) : '—'; }
+
+function renderTeachersTable(){
+  const wrap = document.getElementById('teachersTableWrap');
+  if(!teachers.length){ wrap.innerHTML = '<div class="empty">No teachers added yet.</div>'; return; }
+  wrap.innerHTML = `<table><thead><tr><th>Name</th><th>Classes assigned</th><th></th></tr></thead><tbody>
+    ${teachers.map(t=>{
+      const count = classes.filter(c=>c.teacherId===t.id).length;
+      return `<tr><td class="txt">${t.name}</td><td>${count}</td><td><button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button></td></tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+function renderClassesTable(){
+  const wrap = document.getElementById('classesTableWrap');
+  if(!classes.length){ wrap.innerHTML = '<div class="empty">No classes added yet.</div>'; return; }
+  wrap.innerHTML = `<table><thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Schedule</th><th></th></tr></thead><tbody>
+    ${classes.map(c=>{
+      const sched = DAYS.filter(([k])=>c.schedule && c.schedule[k]).map(([k,l])=>`${l} ${c.schedule[k]}`).join(', ') || 'Not set';
+      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td class="txt">${sched}</td><td><button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button></td></tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+function renderAdmissionsTable(){
+  const wrap = document.getElementById('admissionsTableWrap');
+  if(!admissions.length){ wrap.innerHTML = '<div class="empty">No admissions logged yet.</div>'; return; }
+  const sorted = [...admissions].sort((a,b)=> b.date.localeCompare(a.date));
+  wrap.innerHTML = `<table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th></th></tr></thead><tbody>
+    ${sorted.map(a=>`<tr><td>${a.date}</td><td class="txt">${a.name}</td><td class="txt">${className(a.classId)}</td><td><button class="ghost danger" onclick="deleteItem('admissions','${a.id}')">Remove</button></td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+function renderSessionsTable(){
+  const wrap = document.getElementById('sessionsTableWrap');
+  if(!sessions.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
+  const sorted = [...sessions].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,25);
+  wrap.innerHTML = `<table><thead><tr><th>Date</th><th>Class</th><th>Teacher</th><th>Expected</th><th>Actual start</th><th>Finish</th><th>Physical</th><th>Online</th><th>Absent</th><th></th></tr></thead><tbody>
+    ${sorted.map(s=>`<tr>
+      <td>${s.date}</td>
+      <td class="txt">${className(s.classId)}</td>
+      <td class="txt">${classTeacherName(s.classId)}</td>
+      <td>${s.expectedStart || '—'}</td>
+      <td>${s.actualStart}</td>
+      <td>${s.actualFinish}</td>
+      <td>${s.physical}</td>
+      <td>${s.online}</td>
+      <td>${s.absent}</td>
+      <td><button class="ghost danger" onclick="deleteItem('sessions','${s.id}')">Remove</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+// ---------- Analytics ----------
+function minutesDiff(expectedHHMM, actualHHMM){
+  if(!expectedHHMM || !actualHHMM) return null;
+  const [eh,em] = expectedHHMM.split(':').map(Number);
+  const [ah,am] = actualHHMM.split(':').map(Number);
+  return (ah*60+am) - (eh*60+em);
+}
+
+function computePunctualityByTeacher(withinDays=7){
+  const cutoff = daysAgo(withinDays);
+  const byTeacher = {};
+  sessions.filter(s=>s.date>=cutoff && s.expectedStart).forEach(s=>{
+    const cls = classes.find(c=>c.id===s.classId);
+    if(!cls) return;
+    const diff = minutesDiff(s.expectedStart, s.actualStart);
+    if(diff===null) return;
+    byTeacher[cls.teacherId] = byTeacher[cls.teacherId] || [];
+    byTeacher[cls.teacherId].push(diff);
+  });
+  return Object.entries(byTeacher).map(([teacherId, diffs])=>({
+    teacherId,
+    name: teacherName(teacherId),
+    avg: diffs.reduce((a,b)=>a+b,0)/diffs.length,
+    count: diffs.length
+  })).sort((a,b)=>b.avg-a.avg);
+}
+
+function daysAgo(n){
+  const d = new Date(); d.setDate(d.getDate()-n);
+  return d.toISOString().slice(0,10);
+}
+
+function renderPunctuality(){
+  const wrap = document.getElementById('punctualityList');
+  const data = computePunctualityByTeacher(7);
+  if(!data.length){ wrap.innerHTML = '<div class="empty">Log a few sessions with schedules set to see punctuality.</div>'; return; }
+  wrap.innerHTML = data.map(d=>{
+    const late = d.avg > 2;
+    const stampText = late ? `LATE ${Math.round(d.avg)}m` : (d.avg < -2 ? `EARLY ${Math.abs(Math.round(d.avg))}m` : 'ON TIME');
+    return `<div class="stamp-row">
+      <div><div class="stamp-name">${d.name}</div><div class="stamp-sub">${d.count} session${d.count===1?'':'s'} · last 7 days</div></div>
+      <div class="stamp ${late?'late':'ontime'}">${stampText}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderAlerts(){
+  const wrap = document.getElementById('alertsList');
+  const alerts = [];
+
+  computePunctualityByTeacher(7).forEach(d=>{
+    if(d.avg > 10){
+      alerts.push({level:'warn', text:`<b>${d.name}</b> is averaging ${Math.round(d.avg)} minutes late across ${d.count} session${d.count===1?'':'s'} this week.`});
+    }
+  });
+
+  classes.forEach(c=>{
+    const recent = sessions.filter(s=>s.classId===c.id && s.date>=daysAgo(7));
+    const prior = sessions.filter(s=>s.classId===c.id && s.date>=daysAgo(14) && s.date<daysAgo(7));
+    const totalRecent = recent.reduce((sum,s)=>sum+s.physical+s.online,0);
+    const totalPrior = prior.reduce((sum,s)=>sum+s.physical+s.online,0);
+    if(totalPrior>0 && totalRecent < totalPrior*0.8){
+      const dropPct = Math.round((1-totalRecent/totalPrior)*100);
+      alerts.push({level:'warn', text:`Attendance in <b>${c.name}</b> dropped ${dropPct}% versus the prior week.`});
+    }
+    const absentSum = recent.reduce((s2,s)=>s2+s.absent,0);
+    const presentSum = recent.reduce((s2,s)=>s2+s.physical+s.online,0);
+    if(absentSum+presentSum>0 && absentSum/(absentSum+presentSum) > 0.3){
+      alerts.push({level:'warn', text:`<b>${c.name}</b> has an absence rate above 30% this week.`});
+    }
+  });
+
+  const recentAdmissions = admissions.filter(a=>a.date>=daysAgo(14));
+  if(admissions.length>0 && recentAdmissions.length===0){
+    alerts.push({level:'info', text:`No new admissions recorded in the last 14 days.`});
+  }
+
+  if(!alerts.length){ wrap.innerHTML = '<div class="empty">No alerts right now — things look steady.</div>'; return; }
+  wrap.innerHTML = alerts.map(a=>`<div class="alert ${a.level}"><div class="dot"></div><div class="txt">${a.text}</div></div>`).join('');
+}
+
+function renderKpis(){
+  const wrap = document.getElementById('kpiGrid');
+  const weekSessions = sessions.filter(s=>s.date>=daysAgo(7));
+  const punct = computePunctualityByTeacher(7);
+  const overallAvg = punct.length ? punct.reduce((a,b)=>a+b.avg,0)/punct.length : null;
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todaySessions = sessions.filter(s=>s.date===todayStr);
+  const todayPresent = todaySessions.reduce((s,x)=>s+x.physical+x.online,0);
+  const monthStr = todayStr.slice(0,7);
+  const monthAdmissions = admissions.filter(a=>a.date.slice(0,7)===monthStr).length;
+
+  const cards = [
+    { label:'Sessions logged', value: weekSessions.length, foot:'last 7 days' },
+    { label:'Avg punctuality', value: overallAvg===null ? '—' : (overallAvg>0 ? `+${Math.round(overallAvg)}m` : `${Math.round(overallAvg)}m`), foot: overallAvg===null?'no data yet':(overallAvg>2?'late on average':'on time on average') },
+    { label:"Present today", value: todayPresent, foot: `${todaySessions.length} session${todaySessions.length===1?'':'s'} logged today` },
+    { label:'New admissions', value: monthAdmissions, foot:'this month' }
+  ];
+  wrap.innerHTML = cards.map(c=>`<div class="card kpi-card"><div class="label">${c.label}</div><div class="value">${c.value}</div><div class="foot">${c.foot}</div></div>`).join('');
+}
+
+function renderAttendanceChart(){
+  const sorted = [...sessions].sort((a,b)=>a.date.localeCompare(b.date)).slice(-14);
+  const labels = sorted.map(s=> s.date.slice(5) + ' · ' + className(s.classId));
+  const physical = sorted.map(s=>s.physical);
+  const online = sorted.map(s=>s.online);
+  const absent = sorted.map(s=>s.absent);
+  const ctx = document.getElementById('attendanceChart').getContext('2d');
+  if(attendanceChart) attendanceChart.destroy();
+  attendanceChart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels, datasets:[
+      {label:'Physical', data:physical, backgroundColor:'#3E6259'},
+      {label:'Online', data:online, backgroundColor:'#C9A227'},
+      {label:'Absent', data:absent, backgroundColor:'#B33A3A'}
+    ]},
+    options:{
+      responsive:true,
+      plugins:{legend:{position:'bottom', labels:{font:{size:11}}}},
+      scales:{ x:{stacked:true, ticks:{font:{size:9}}}, y:{stacked:true, beginAtZero:true} }
+    }
+  });
+}
+
+function renderAdmissionsChart(){
+  const byMonth = {};
+  admissions.forEach(a=>{ const m=a.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+1; });
+  const months = Object.keys(byMonth).sort();
+  const ctx = document.getElementById('admissionsChart').getContext('2d');
+  if(admissionsChart) admissionsChart.destroy();
+  admissionsChart = new Chart(ctx, {
+    type:'line',
+    data:{ labels: months, datasets:[{
+      label:'New admissions', data: months.map(m=>byMonth[m]),
+      borderColor:'#1F3D2B', backgroundColor:'rgba(31,61,43,0.12)', fill:true, tension:0.25
+    }]},
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}} } }
+  });
+}
+
+function renderDashboard(){
+  renderKpis();
+  renderPunctuality();
+  renderAlerts();
+  renderAttendanceChart();
+  renderAdmissionsChart();
+}
+
+function renderAll(){
+  populateTeacherSelect();
+  populateClassSelects();
+  renderTeachersTable();
+  renderClassesTable();
+  renderAdmissionsTable();
+  renderSessionsTable();
+  renderDashboard();
+}
+
+// ---------- AI Insights ----------
+document.getElementById('generateAiBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('generateAiBtn');
+  const out = document.getElementById('aiOutput');
+  if(!requireBackend()) return;
+  if(sessions.length < 1){
+    out.innerHTML = '<div class="empty">Log at least one session first so there is data to analyze.</div>';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Thinking…';
+  out.innerHTML = '<div class="empty">Analyzing your ledger…</div>';
+
+  const summary = buildDataSummary();
+  try{
+    const res = await fetch(`${apiBase()}/api/insights`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(summary)
+    });
+    if(res.status === 500){
+      const body = await res.json().catch(()=>({}));
+      if(body.error === 'no_api_key'){
+        out.innerHTML = '<div class="empty">Your server doesn\'t have an Anthropic API key set yet. Add ANTHROPIC_API_KEY to its environment variables on Render (get one at console.anthropic.com), then try again.</div>';
+        return;
+      }
+    }
+    if(!res.ok) throw new Error('bad_response');
+    const { items } = await res.json();
+    out.innerHTML = `<div class="ai-box">${items.map(it=>`<div class="ai-item"><span class="tag">${it.tag||'GENERAL'}</span>${it.text}</div>`).join('')}</div>`;
+  }catch(err){
+    console.error(err);
+    out.innerHTML = '<div class="empty">Could not generate insights right now. Please try again in a moment.</div>';
+  }finally{
+    btn.disabled = false; btn.textContent = 'Generate insights';
+  }
+});
+
+function buildDataSummary(){
+  return {
+    teachers: teachers.map(t=>({name:t.name})),
+    classes: classes.map(c=>({name:c.name, subject:c.subject, teacher: teacherName(c.teacherId), schedule:c.schedule})),
+    recentSessions: [...sessions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(s=>({
+      date:s.date, class: className(s.classId), teacher: classTeacherName(s.classId),
+      expectedStart:s.expectedStart, actualStart:s.actualStart, actualFinish:s.actualFinish,
+      physical:s.physical, online:s.online, absent:s.absent, notes:s.notes
+    })),
+    admissionsLast30Days: admissions.filter(a=>a.date>=daysAgo(30)).length,
+    totalAdmissions: admissions.length
+  };
+}
+
+// ---------- Boot ----------
+(async function boot(){
+  initScheduleDaysInput();
+  await loadAll();
+  document.getElementById('set_backendUrl').value = settings.backendUrl || '';
+  if(!settings.backendUrl){
+    document.querySelectorAll('section.view').forEach(v=>{
+      if(v.id !== 'view-settings'){
+        const banner = document.createElement('div');
+        banner.className = 'note';
+        banner.innerHTML = 'This dashboard has no server connected yet, so no data can be saved. Go to <b>Settings</b> and paste your server URL first.';
+        v.prepend(banner);
+      }
+    });
+  }
+  renderAll();
+})();
+</script>
+</body>
+</html>

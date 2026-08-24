@@ -157,5 +157,42 @@ COLLECTIONS.forEach(collection => {
   });
 });
 
+// ---------- AI insights ----------
+// Uses your own Anthropic API key so this works outside Claude's chat
+// interface. Set ANTHROPIC_API_KEY in Render's environment variables
+// (get one at console.anthropic.com -> API Keys).
+app.post('/api/insights', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'no_api_key' });
+  }
+  try {
+    const summary = req.body;
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `You are an operations analyst for a private tuition center. Based on this JSON summary of recent sessions, teacher punctuality, attendance, and admissions, produce 3-6 short, specific, actionable insights or recommendations a center owner could act on this week. Respond ONLY with a JSON array of objects like [{"tag":"PUNCTUALITY","text":"..."}] with no markdown, no code fences, no preamble. Valid tags: PUNCTUALITY, ATTENDANCE, ADMISSIONS, GENERAL.\n\nDATA:\n${JSON.stringify(summary)}`
+        }]
+      })
+    });
+    const data = await response.json();
+    const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const clean = textBlocks.replace(/```json|```/g, '').trim();
+    const items = JSON.parse(clean);
+    res.json({ items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'insights_failed' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Calendar bridge listening on port ' + PORT));

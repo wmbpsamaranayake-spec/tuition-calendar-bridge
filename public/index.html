@@ -7,18 +7,18 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root{
-    --paper: #EDE6D6;
-    --paper-dark: #E1D7BE;
-    --card: #F7F3E8;
-    --ink: #21314D;
-    --ink-soft: #4B5A72;
-    --pine: #1F3D2B;
-    --pine-dark: #16301F;
+    --paper: #F2F3F6;
+    --paper-dark: #E4E7EE;
+    --card: #FFFFFF;
+    --ink: #16233F;
+    --ink-soft: #52607C;
+    --pine: #0F1F3E;
+    --pine-dark: #0A1530;
     --brass: #C9A227;
-    --brass-dark: #a9861a;
+    --brass-dark: #A9861A;
     --stamp: #B33A3A;
-    --teal: #3E6259;
-    --line: rgba(33,49,77,0.16);
+    --teal: #0F1F3E;
+    --line: rgba(22,35,63,0.14);
     --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
@@ -41,6 +41,8 @@
     border-bottom:3px double var(--ink);
     padding-bottom:14px; margin-bottom:6px;
   }
+  .masthead .brand{display:flex; align-items:center; gap:14px;}
+  .masthead .crest{width:52px; height:52px; flex:none;}
   .masthead h1{
     font-family:var(--font-display); font-weight:700; letter-spacing:0.5px;
     font-size:30px; margin:0; color:var(--pine-dark);
@@ -157,9 +159,12 @@
 <div class="app">
 
   <header class="masthead">
-    <div>
-      <h1>The Register</h1>
-      <div class="sub">Tuition Operations Ledger</div>
+    <div class="brand">
+      <img src="logo.png" alt="Eminent Edification crest" class="crest">
+      <div>
+        <h1>The Register</h1>
+        <div class="sub">Eminent Edification · Tuition Operations Ledger</div>
+      </div>
     </div>
     <div class="today" id="todayLabel"></div>
   </header>
@@ -843,7 +848,7 @@ function renderAttendanceChart(){
   attendanceChart = new Chart(ctx, {
     type:'bar',
     data:{ labels, datasets:[
-      {label:'Physical', data:physical, backgroundColor:'#3E6259'},
+      {label:'Physical', data:physical, backgroundColor:'#0F1F3E'},
       {label:'Online', data:online, backgroundColor:'#C9A227'},
       {label:'Absent', data:absent, backgroundColor:'#B33A3A'}
     ]},
@@ -865,7 +870,7 @@ function renderAdmissionsChart(){
     type:'line',
     data:{ labels: months, datasets:[{
       label:'New admissions', data: months.map(m=>byMonth[m]),
-      borderColor:'#1F3D2B', backgroundColor:'rgba(31,61,43,0.12)', fill:true, tension:0.25
+      borderColor:'#0F1F3E', backgroundColor:'rgba(15,31,62,0.12)', fill:true, tension:0.25
     }]},
     options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}} } }
   });

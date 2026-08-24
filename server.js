@@ -21,6 +21,46 @@ const oauth2Client = new google.auth.OAuth2(
 let db;
 let isConnected = false;
 
+// SMS is optional — only active if TEXTITBIZ_API_KEY is set. This stays
+// off automatically on any environment (e.g. staging) where you haven't
+// configured it, so test data never triggers a real text.
+function toLocalPhoneFormat(phone) {
+  if (!phone) return null;
+  let digits = String(phone).replace(/\D/g, ''); // strip +, spaces, dashes
+  if (digits.startsWith('0')) digits = '94' + digits.slice(1);   // 0771234567 -> 94771234567
+  else if (!digits.startsWith('94')) digits = '94' + digits;      // 771234567  -> 94771234567
+  return digits;
+}
+
+async function maybeSendSessionSms(session) {
+  if (!process.env.TEXTITBIZ_API_KEY) return;
+  try {
+    const cls = await db.collection('classes').findOne({ id: session.classId });
+    if (!cls) return;
+    const teacher = await db.collection('teachers').findOne({ id: cls.teacherId });
+    if (!teacher || !teacher.phone) return;
+
+    const to = toLocalPhoneFormat(teacher.phone);
+    const text = `Hi ${teacher.name}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.`;
+
+    const res = await fetch('https://api.textit.biz/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': '*/*',
+        'X-API-VERSION': 'v1',
+        'Authorization': `Basic ${process.env.TEXTITBIZ_API_KEY}`
+      },
+      body: JSON.stringify({ to, text })
+    });
+
+    const responseText = await res.text();
+    console.log(`SMS to ${teacher.name} (${to}) — status ${res.status}:`, responseText);
+  } catch (e) {
+    console.error('Failed to send session SMS:', e.message);
+  }
+}
+
 function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -134,6 +174,10 @@ COLLECTIONS.forEach(name => {
       const item = { ...req.body, id: req.body.id || newId() };
       await db.collection(name).insertOne({ ...item });
       res.json(item);
+      if (name === 'sessions') {
+        // Fire-and-forget: don't make the person wait on the SMS provider.
+        maybeSendSessionSms(item);
+      }
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'save_failed' });

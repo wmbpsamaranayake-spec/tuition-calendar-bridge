@@ -353,10 +353,15 @@
   <section class="view" id="view-teachers">
     <div class="card">
       <h3>Add a Teacher</h3>
+      <div class="note">Add a mobile number to enable an automatic SMS whenever a session is logged for this teacher's class. Any common format works — 0771234567, +94771234567, or 94771234567 — leave blank if you don't want SMS alerts for this teacher.</div>
       <form class="entry" id="teacherForm">
         <div>
           <label>Teacher name</label>
           <input type="text" id="t_name" required>
+        </div>
+        <div>
+          <label>Mobile number (optional)</label>
+          <input type="tel" id="t_phone" placeholder="0771234567">
         </div>
         <div class="full">
           <button type="submit" class="primary">Save teacher</button>
@@ -661,7 +666,10 @@ document.getElementById('classForm').addEventListener('submit', async (e)=>{
 document.getElementById('teacherForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   if(!requireBackend()) return;
-  const item = await apiAdd('teachers', { name: document.getElementById('t_name').value.trim() });
+  const item = await apiAdd('teachers', {
+    name: document.getElementById('t_name').value.trim(),
+    phone: document.getElementById('t_phone').value.trim()
+  });
   teachers.push(item);
   e.target.reset();
   populateTeacherSelect();
@@ -742,10 +750,16 @@ function classTeacherName(classId){ const c = classes.find(x=>x.id===classId); r
 function renderTeachersTable(){
   const wrap = document.getElementById('teachersTableWrap');
   if(!teachers.length){ wrap.innerHTML = '<div class="empty">No teachers added yet.</div>'; return; }
-  wrap.innerHTML = `<table><thead><tr><th>Name</th><th>Classes assigned</th><th></th></tr></thead><tbody>
+  wrap.innerHTML = `<table><thead><tr><th>Name</th><th>Mobile</th><th>SMS alerts</th><th>Classes assigned</th><th></th></tr></thead><tbody>
     ${teachers.map(t=>{
       const count = classes.filter(c=>c.teacherId===t.id).length;
-      return `<tr><td class="txt">${t.name}</td><td>${count}</td><td><button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button></td></tr>`;
+      return `<tr>
+        <td class="txt">${t.name}</td>
+        <td class="txt">${t.phone || '—'}</td>
+        <td class="txt">${t.phone ? '<span style="color:var(--brass-dark);">On</span>' : '<span style="color:var(--ink-soft);">Off</span>'}</td>
+        <td>${count}</td>
+        <td><button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button></td>
+      </tr>`;
     }).join('')}
   </tbody></table>`;
 }

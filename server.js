@@ -32,6 +32,18 @@ function toLocalPhoneFormat(phone) {
   return digits;
 }
 
+// How many minutes late/over before we bother warning about it — small
+// gaps (a couple minutes) aren't worth flagging to the teacher.
+const WARNING_THRESHOLD_MINUTES = 5;
+
+function minutesBetween(expectedHHMM, actualHHMM) {
+  if (!expectedHHMM || !actualHHMM) return null;
+  const e = expectedHHMM.split(':').map(Number);
+  const a = actualHHMM.split(':').map(Number);
+  if (e.some(Number.isNaN) || a.some(Number.isNaN)) return null;
+  return (a[0] * 60 + a[1]) - (e[0] * 60 + e[1]);
+}
+
 async function maybeSendSessionSms(session) {
   if (!process.env.TEXTITBIZ_API_KEY) return;
   try {
@@ -41,7 +53,19 @@ async function maybeSendSessionSms(session) {
     if (!teacher || !teacher.phone) return;
 
     const to = toLocalPhoneFormat(teacher.phone);
-    const text = `Hi ${teacher.name}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.`;
+
+    const lateMinutes = minutesBetween(session.expectedStart, session.actualStart);
+    const overMinutes = minutesBetween(session.expectedFinish, session.actualFinish);
+
+    let warning = '';
+    if (lateMinutes !== null && lateMinutes > WARNING_THRESHOLD_MINUTES) {
+      warning += ` ⚠️ Started ${lateMinutes} min late.`;
+    }
+    if (overMinutes !== null && overMinutes > WARNING_THRESHOLD_MINUTES) {
+      warning += ` ⚠️ Ran ${overMinutes} min over the scheduled end time.`;
+    }
+
+    const text = `Hi ${teacher.name}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.${warning}`;
 
     const res = await fetch('https://api.textit.biz/', {
       method: 'POST',

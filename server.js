@@ -6,8 +6,27 @@ const { google } = require('googleapis');
 
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: '2mb' }));
 
 const TOKEN_PATH = './tokens.json';
+const DATA_PATH = './data.json';
+
+// ---------- Simple file-backed data store ----------
+// Holds teachers, classes, sessions, admissions. Good enough for a small
+// team; if you outgrow it, swap loadData/saveData for a real database.
+function loadData() {
+  if (fs.existsSync(DATA_PATH)) {
+    try { return JSON.parse(fs.readFileSync(DATA_PATH, 'utf8')); }
+    catch (e) { console.error('Could not read data.json:', e.message); }
+  }
+  return { teachers: [], classes: [], sessions: [], admissions: [] };
+}
+function saveData(data) {
+  fs.writeFileSync(DATA_PATH, JSON.stringify(data));
+}
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -97,6 +116,45 @@ app.get('/api/schedule', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'fetch_failed' });
   }
+});
+
+// ---------- Data endpoints: teachers, classes, sessions, admissions ----------
+// GET  /api/:collection        -> list all items
+// POST /api/:collection        -> add one item (body = item fields)
+// DELETE /api/:collection/:id  -> remove one item by id
+const COLLECTIONS = ['teachers', 'classes', 'sessions', 'admissions'];
+
+COLLECTIONS.forEach(collection => {
+  app.get(`/api/${collection}`, (req, res) => {
+    const data = loadData();
+    res.json(data[collection] || []);
+  });
+
+  app.post(`/api/${collection}`, (req, res) => {
+    try {
+      const data = loadData();
+      data[collection] = data[collection] || [];
+      const item = { ...req.body, id: req.body.id || newId() };
+      data[collection].push(item);
+      saveData(data);
+      res.json(item);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'save_failed' });
+    }
+  });
+
+  app.delete(`/api/${collection}/:id`, (req, res) => {
+    try {
+      const data = loadData();
+      data[collection] = (data[collection] || []).filter(x => x.id !== req.params.id);
+      saveData(data);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'delete_failed' });
+    }
+  });
 });
 
 const PORT = process.env.PORT || 3000;

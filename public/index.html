@@ -500,13 +500,25 @@ function toHHMM(isoOrDateStr){
   return d.toTimeString().slice(0,5);
 }
 
+function normalizeText(s){
+  if(!s) return '';
+  return s
+    // Treat any dash-like character (en dash, em dash, minus sign, etc.)
+    // the same as a plain hyphen — autocorrect on phones/Macs often swaps
+    // a typed "-" for one of these look-alikes.
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function roomlessTitle(title){
   // Calendar titles look like "Grade 4 - English- Ph/Online - Alpha", where
   // the last " - " segment is the classroom name and can change week to
   // week. Drop it before comparing against the stored class name.
   if(!title) return title;
-  const parts = title.split(' - ');
-  if(parts.length <= 1) return title.trim();
+  const normalized = normalizeText(title);
+  const parts = normalized.split(' - ');
+  if(parts.length <= 1) return normalized;
   return parts.slice(0, -1).join(' - ').trim();
 }
 
@@ -534,10 +546,15 @@ async function updateExpectedStart(){
   const events = await fetchCalendarScheduleFor(dateVal);
 
   if(events){
+    const wanted = normalizeText(cls.name).toLowerCase();
     const match = events.find(ev => {
       const base = roomlessTitle(ev.title);
-      return base && base.toLowerCase().includes(cls.name.toLowerCase());
+      return base && base.toLowerCase().includes(wanted);
     });
+    if(!match){
+      console.log('No calendar match. Looking for:', JSON.stringify(wanted));
+      console.log('Available events today:', events.map(ev => JSON.stringify(roomlessTitle(ev.title))));
+    }
     if(match){
       const hhmm = toHHMM(match.start);
       if(hhmm){

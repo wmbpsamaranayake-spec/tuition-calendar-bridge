@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Register — Tuition Operations Ledger</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --paper: #0A1530;
@@ -379,9 +380,12 @@
     <div class="card">
       <div class="toprow">
         <h3 style="margin:0;">Teacher Report</h3>
-        <span class="chip">Teacher → Class → Month</span>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="chip">Teacher → Class → Month</span>
+          <button class="primary" id="downloadExcelBtn">Download Excel</button>
+        </div>
       </div>
-      <div class="note">Click a teacher to see their classes, click a class to see it by month, and click a month to see every logged session in it.</div>
+      <div class="note">Click a teacher to see their classes, click a class to see it by month, and click a month to see every logged session in it. "Download Excel" exports every logged session as a flat spreadsheet, one row per session.</div>
       <div id="reportsWrap"></div>
     </div>
   </section>
@@ -402,6 +406,21 @@
         </div>
       </form>
       <div id="connectionStatus" style="margin-top:12px; font-size:13px;"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h3>SMS Notifications</h3>
+      <div class="note">Every session-logged SMS also gets sent to this number, in addition to the teacher's own. Leave blank to disable — this is stored on the server, so it applies for everyone using this dashboard, not just this device.</div>
+      <form class="entry" id="orgSettingsForm">
+        <div>
+          <label>Operations Manager mobile number</label>
+          <input type="tel" id="org_managerPhone" placeholder="0771234567">
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Save</button>
+        </div>
+      </form>
+      <div id="orgSettingsStatus" style="margin-top:12px; font-size:13px;"></div>
     </div>
   </section>
 
@@ -637,6 +656,37 @@ document.getElementById('testConnectionBtn').addEventListener('click', async ()=
     }
   }catch(e){
     status.innerHTML = '<span style="color:var(--stamp);">Could not reach that URL. Check it\'s correct and the server is deployed.</span>';
+  }
+});
+
+// ---------- Organization settings (manager phone, etc.) — shared server-side ----------
+async function loadOrgSettings(){
+  const base = apiBase();
+  if(!base) return;
+  try{
+    const res = await fetch(`${base}/api/settings`);
+    if(!res.ok) return;
+    const data = await res.json();
+    document.getElementById('org_managerPhone').value = data.managerPhone || '';
+  }catch(e){
+    console.warn('Could not load organization settings:', e);
+  }
+}
+
+document.getElementById('orgSettingsForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const status = document.getElementById('orgSettingsStatus');
+  if(!requireBackend()) return;
+  try{
+    const res = await fetch(`${apiBase()}/api/settings`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ managerPhone: document.getElementById('org_managerPhone').value.trim() })
+    });
+    if(!res.ok) throw new Error('save_failed');
+    status.innerHTML = '<span style="color:var(--brass-dark);">Saved.</span>';
+  }catch(e){
+    status.innerHTML = '<span style="color:var(--stamp);">Could not save — check your connection to the server.</span>';
   }
 });
 
@@ -975,6 +1025,51 @@ function attendanceTotals(rows){
   };
 }
 
+function exportReportsToExcel(){
+  if(typeof XLSX === 'undefined'){
+    alert('The Excel export library failed to load (likely a network hiccup). Please try again.');
+    return;
+  }
+  if(!sessions.length){
+    alert('No sessions logged yet — nothing to export.');
+    return;
+  }
+
+  const rows = [...sessions]
+    .sort((a,b)=> a.date.localeCompare(b.date))
+    .map(s=>{
+      const cls = classes.find(c=>c.id===s.classId);
+      const teacher = cls ? teachers.find(t=>t.id===cls.teacherId) : null;
+      const lateMin = minutesDiff(s.expectedStart, s.actualStart);
+      return {
+        Teacher: teacher ? teacher.name : '—',
+        Class: cls ? cls.name : '—',
+        Date: s.date,
+        Month: monthLabel(s.date.slice(0,7)),
+        'Expected Start': s.expectedStart || '',
+        'Actual Start': s.actualStart,
+        'Actual Finish': s.actualFinish,
+        'Minutes Late (- = early)': lateMin===null ? '' : lateMin,
+        Physical: s.physical,
+        Online: s.online,
+        'Total Attended': s.physical + s.online,
+        Absent: s.absent,
+        Notes: s.notes || ''
+      };
+    });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:18}, {wch:26}, {wch:11}, {wch:16}, {wch:14}, {wch:12}, {wch:12},
+    {wch:20}, {wch:9}, {wch:8}, {wch:14}, {wch:8}, {wch:30}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sessions');
+  XLSX.writeFile(wb, `tuition-report-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+document.getElementById('downloadExcelBtn').addEventListener('click', exportReportsToExcel);
+
 function renderReports(){
   const wrap = document.getElementById('reportsWrap');
   if(!sessions.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
@@ -1128,6 +1223,8 @@ function buildDataSummary(){
         v.prepend(banner);
       }
     });
+  }else{
+    await loadOrgSettings();
   }
   renderAll();
 })();

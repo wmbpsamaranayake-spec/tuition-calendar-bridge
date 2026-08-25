@@ -44,15 +44,28 @@ function minutesBetween(expectedHHMM, actualHHMM) {
   return (a[0] * 60 + a[1]) - (e[0] * 60 + e[1]);
 }
 
+async function sendTextitSms(to, text) {
+  const res = await fetch('https://api.textit.biz/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': '*/*',
+      'X-API-VERSION': 'v1',
+      'Authorization': `Basic ${process.env.TEXTITBIZ_API_KEY}`
+    },
+    body: JSON.stringify({ to, text })
+  });
+  const responseText = await res.text();
+  return { status: res.status, body: responseText };
+}
+
 async function maybeSendSessionSms(session) {
   if (!process.env.TEXTITBIZ_API_KEY) return;
   try {
     const cls = await db.collection('classes').findOne({ id: session.classId });
     if (!cls) return;
     const teacher = await db.collection('teachers').findOne({ id: cls.teacherId });
-    if (!teacher || !teacher.phone) return;
-
-    const to = toLocalPhoneFormat(teacher.phone);
+    const orgSettings = await db.collection('settings').findOne({ _id: 'org' });
 
     const lateMinutes = minutesBetween(session.expectedStart, session.actualStart);
     const overMinutes = minutesBetween(session.expectedFinish, session.actualFinish);
@@ -65,21 +78,24 @@ async function maybeSendSessionSms(session) {
       warning += ` ⚠️ Ran ${overMinutes} min over the scheduled end time.`;
     }
 
-    const text = `Hi ${teacher.name}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.${warning}`;
+    const teacherLabel = teacher ? teacher.name : 'Teacher';
+    const text = `Hi ${teacherLabel}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.${warning}`;
 
-    const res = await fetch('https://api.textit.biz/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': '*/*',
-        'X-API-VERSION': 'v1',
-        'Authorization': `Basic ${process.env.TEXTITBIZ_API_KEY}`
-      },
-      body: JSON.stringify({ to, text })
-    });
+    // Send to the teacher (if they have a number on file) and, in
+    // addition, to the Operations Manager (if one is configured) — both
+    // get the exact same message.
+    const recipients = [];
+    if (teacher && teacher.phone) {
+      recipients.push({ label: teacher.name, to: toLocalPhoneFormat(teacher.phone) });
+    }
+    if (orgSettings && orgSettings.managerPhone) {
+      recipients.push({ label: 'Operations Manager', to: toLocalPhoneFormat(orgSettings.managerPhone) });
+    }
 
-    const responseText = await res.text();
-    console.log(`SMS to ${teacher.name} (${to}) — status ${res.status}:`, responseText);
+    for (const recipient of recipients) {
+      const result = await sendTextitSms(recipient.to, text);
+      console.log(`SMS to ${recipient.label} (${recipient.to}) — status ${result.status}:`, result.body);
+    }
   } catch (e) {
     console.error('Failed to send session SMS:', e.message);
   }
@@ -220,6 +236,31 @@ COLLECTIONS.forEach(name => {
 });
 
 // ---------- AI insights ----------
+// ---------- Organization settings (e.g. Operations Manager phone number) ----------
+// Stored as a single shared document — one setting set for the whole
+// organization, not per-device like the backend URL.
+app.get('/api/settings', async (req, res) => {
+  try {
+    const doc = await db.collection('settings').findOne({ _id: 'org' });
+    const { _id, ...rest } = doc || {};
+    res.json(rest);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'load_failed' });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  try {
+    const { _id, ...rest } = req.body || {};
+    await db.collection('settings').updateOne({ _id: 'org' }, { $set: rest }, { upsert: true });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'save_failed' });
+  }
+});
+
 app.post('/api/insights', async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'no_api_key' });

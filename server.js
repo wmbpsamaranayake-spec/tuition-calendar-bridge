@@ -454,6 +454,52 @@ COLLECTIONS.forEach(name => {
 // ---------- Organization settings (e.g. Operations Manager phone number) ----------
 // Stored as a single shared document — one setting set for the whole
 // organization, not per-device like the backend URL.
+// Planned hours per class per month — overrides that class's default
+// plannedMonthlyHours for months that genuinely differ. Upserts by
+// (classId, month) so setting the same month twice updates it rather
+// than creating duplicates.
+app.get('/api/planned-hours', requireAuth(), async (req, res) => {
+  try {
+    const items = await db.collection('plannedHours').find({}).toArray();
+    res.json(items.map(({ _id, ...rest }) => rest));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'load_failed' });
+  }
+});
+
+app.post('/api/planned-hours', requireAuth(), async (req, res) => {
+  try {
+    const { classId, month, hours } = req.body || {};
+    if (!classId || !month) return res.status(400).json({ error: 'missing_fields' });
+
+    const existing = await db.collection('plannedHours').findOne({ classId, month });
+    if (existing) {
+      await db.collection('plannedHours').updateOne({ classId, month }, { $set: { hours } });
+      const updated = await db.collection('plannedHours').findOne({ classId, month });
+      const { _id, ...clean } = updated;
+      return res.json(clean);
+    }
+
+    const item = { id: newId(), classId, month, hours };
+    await db.collection('plannedHours').insertOne({ ...item });
+    res.json(item);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'save_failed' });
+  }
+});
+
+app.delete('/api/planned-hours/:id', requireAuth(), async (req, res) => {
+  try {
+    await db.collection('plannedHours').deleteOne({ id: req.params.id });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
 app.get('/api/settings', requireAuth(), async (req, res) => {
   try {
     const doc = await db.collection('settings').findOne({ _id: 'org' });

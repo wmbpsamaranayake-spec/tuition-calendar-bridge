@@ -370,7 +370,7 @@
           <input type="text" id="c_grade" placeholder="e.g. Grade 4, AS, O/L">
         </div>
         <div>
-          <label>Planned hours per month</label>
+          <label>Default planned hours per month</label>
           <input type="number" id="c_plannedHours" min="0" step="0.5" placeholder="e.g. 8">
         </div>
         <div class="full">
@@ -560,6 +560,21 @@
   </div>
 </div>
 
+<!-- Planned hours per class per month editor -->
+<div id="plannedHoursModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(10,21,48,0.7); z-index:1000; align-items:center; justify-content:center; padding:16px;">
+  <div class="card" style="max-width:340px; width:100%;">
+    <h3 style="margin-top:0;">Set Planned Hours</h3>
+    <div id="plannedHoursModalInfo" style="font-size:13px; color:var(--ink-soft); margin-bottom:12px;"></div>
+    <label>Planned hours for this month</label>
+    <input type="number" id="plannedHoursModalInput" min="0" step="0.5" style="margin-bottom:14px;">
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="ghost" id="plannedHoursModalCancelBtn">Cancel</button>
+      <button class="primary" id="plannedHoursModalSaveBtn">Save</button>
+    </div>
+    <div id="plannedHoursModalStatus" style="margin-top:10px; font-size:12px;"></div>
+  </div>
+</div>
+
 <script>
 const DAYS = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
 const DAY_INDEX = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
@@ -569,6 +584,7 @@ let classes = [];
 let sessions = [];
 let admissions = [];
 let users = [];
+let plannedHoursOverrides = []; // per-class, per-month planned hours overrides
 let settings = { backendUrl: '' };
 let currentUser = null; // { username, name, role }
 let attendanceChart, admissionsChart;
@@ -808,11 +824,11 @@ document.getElementById('userCancelBtn').addEventListener('click', cancelUserEdi
 async function loadAll(){
   settings.backendUrl = getBackendUrl();
   if(!settings.backendUrl){
-    teachers = []; classes = []; sessions = []; admissions = [];
+    teachers = []; classes = []; sessions = []; admissions = []; plannedHoursOverrides = [];
     return;
   }
-  [teachers, classes, sessions, admissions] = await Promise.all([
-    apiGet('teachers'), apiGet('classes'), apiGet('sessions'), apiGet('admissions')
+  [teachers, classes, sessions, admissions, plannedHoursOverrides] = await Promise.all([
+    apiGet('teachers'), apiGet('classes'), apiGet('sessions'), apiGet('admissions'), apiGet('planned-hours')
   ]);
 }
 
@@ -1602,6 +1618,58 @@ function progressRingSvg(pct, color, label){
     </svg>`;
 }
 
+// Resolves the effective planned hours for a class in a given month: an
+// explicit override for that exact month if one's been set, otherwise
+// the class's default plannedMonthlyHours.
+function getPlannedHoursForClassMonth(classId, yearMonth){
+  const override = plannedHoursOverrides.find(p=>p.classId===classId && p.month===yearMonth);
+  if(override) return override.hours;
+  const cls = classes.find(c=>c.id===classId);
+  return cls ? (cls.plannedMonthlyHours || 0) : 0;
+}
+
+// ---------- Planned hours editor modal ----------
+let plannedHoursModalContext = null; // { classId, yearMonth }
+
+function openPlannedHoursModal(classId, yearMonth){
+  const cls = classes.find(c=>c.id===classId);
+  if(!cls) return;
+  plannedHoursModalContext = { classId, yearMonth };
+  document.getElementById('plannedHoursModalInfo').textContent = `${cls.name} — ${monthLabel(yearMonth)}`;
+  document.getElementById('plannedHoursModalInput').value = getPlannedHoursForClassMonth(classId, yearMonth) || '';
+  document.getElementById('plannedHoursModalStatus').textContent = '';
+  document.getElementById('plannedHoursModalOverlay').style.display = 'flex';
+}
+window.openPlannedHoursModal = openPlannedHoursModal;
+
+function closePlannedHoursModal(){
+  document.getElementById('plannedHoursModalOverlay').style.display = 'none';
+  plannedHoursModalContext = null;
+}
+document.getElementById('plannedHoursModalCancelBtn').addEventListener('click', closePlannedHoursModal);
+
+document.getElementById('plannedHoursModalSaveBtn').addEventListener('click', async ()=>{
+  if(!plannedHoursModalContext || !requireBackend()) return;
+  const { classId, yearMonth } = plannedHoursModalContext;
+  const hours = parseFloat(document.getElementById('plannedHoursModalInput').value) || 0;
+  const status = document.getElementById('plannedHoursModalStatus');
+  try{
+    const res = await fetch(`${apiBase()}/api/planned-hours`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ classId, month: yearMonth, hours })
+    });
+    if(!res.ok) throw new Error('save_failed');
+    const item = await res.json();
+    plannedHoursOverrides = plannedHoursOverrides.filter(p=>!(p.classId===item.classId && p.month===item.month));
+    plannedHoursOverrides.push(item);
+    closePlannedHoursModal();
+    renderHoursTracker();
+  }catch(e){
+    status.innerHTML = '<span style="color:var(--stamp);">Could not save — check your connection.</span>';
+  }
+});
+
 function renderHoursTracker(){
   const picker = document.getElementById('hoursMonthPicker');
   if(!picker.value) picker.value = new Date().toISOString().slice(0,7);
@@ -1630,7 +1698,8 @@ function renderHoursTracker(){
     const grades = Object.keys(byTeacher[tId]).sort();
     const gradesHtml = grades.map(grade=>{
       const cardsHtml = byTeacher[tId][grade].map(c=>{
-        const planned = c.plannedMonthlyHours || 0;
+        const planned = getPlannedHoursForClassMonth(c.id, yearMonth);
+        const isOverride = plannedHoursOverrides.some(p=>p.classId===c.id && p.month===yearMonth);
         const completed = computeClassHoursForMonth(c.id, yearMonth);
         const pct = planned>0 ? (completed/planned)*100 : 0;
         const ringPct = Math.max(0, Math.min(100, pct));
@@ -1653,8 +1722,9 @@ function renderHoursTracker(){
         return `<div class="hours-card">
           ${progressRingSvg(ringPct, color, label)}
           <div class="hours-card-name">${c.name}</div>
-          <div class="hours-card-figure">${completed.toFixed(1)} / ${planned || '—'} hrs</div>
+          <div class="hours-card-figure">${completed.toFixed(1)} / ${planned || '—'} hrs${isOverride ? ' <span title="Custom target for this month">*</span>' : ''}</div>
           <div class="hours-card-status" style="color:${color};">${status}</div>
+          <button class="ghost" style="margin-top:6px; font-size:10.5px; padding:3px 8px;" onclick="openPlannedHoursModal('${c.id}','${yearMonth}')">Edit target</button>
         </div>`;
       }).join('');
 

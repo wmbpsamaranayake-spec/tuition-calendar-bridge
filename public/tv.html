@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, initial-scale=1.0">
+<title>The Register — Live Dashboard</title>
+<style>
+  :root{
+    --paper: #0A1530;
+    --paper-dark: #13244A;
+    --card: #16264F;
+    --ink: #E7EAF2;
+    --ink-soft: #9AA6C3;
+    --brass: #C9A227;
+    --brass-dark: #E3BE4E;
+    --stamp: #D6585B;
+    --line: rgba(231,234,242,0.14);
+    --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  html, body{
+    margin:0; padding:0; height:100%; overflow:hidden;
+    background:var(--paper); color:var(--ink); font-family:var(--font-body);
+  }
+  .tv{ height:100vh; display:flex; flex-direction:column; padding:22px 28px; }
+
+  header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex:none; }
+  .brand{ display:flex; align-items:center; gap:16px; }
+  .crest{ width:46px; height:46px; }
+  h1{ font-family:var(--font-display); font-weight:700; font-size:26px; margin:0; color:var(--brass-dark); }
+  .sub{ font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-soft); }
+  .live-status{ text-align:right; font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); }
+  .live-dot{ display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--brass); margin-right:7px; animation:pulse 2s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  .kpi-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:16px; flex:none; }
+  .kpi-card{ background:var(--card); border:1px solid var(--line); border-radius:5px; padding:16px 18px; }
+  .kpi-card .label{ font-size:12px; text-transform:uppercase; letter-spacing:1.6px; color:var(--ink-soft); }
+  .kpi-card .value{ font-family:var(--font-mono); font-size:36px; font-weight:700; margin-top:6px; color:var(--brass-dark); }
+  .kpi-card .foot{ font-size:12px; color:var(--ink-soft); margin-top:4px; }
+
+  .main-grid{ flex:1; display:grid; grid-template-columns:1.3fr 1.3fr 1fr; gap:16px; min-height:0; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:5px; padding:16px 18px; overflow:hidden; display:flex; flex-direction:column; }
+  .card h3{ margin:0 0 10px; font-family:var(--font-display); font-size:17px; color:var(--brass-dark); flex:none; }
+  .card .body{ flex:1; overflow:hidden; }
+
+  .alert-row{ display:flex; gap:10px; padding:8px 0; border-bottom:1px solid var(--line); align-items:flex-start; }
+  .alert-row:last-child{ border-bottom:none; }
+  .alert-row .dot{ width:9px; height:9px; border-radius:50%; margin-top:5px; flex:none; background:var(--stamp); }
+  .alert-row .txt{ font-size:13.5px; line-height:1.4; }
+  .alert-row .txt b{ color:var(--brass-dark); }
+  .empty{ color:var(--ink-soft); font-size:13px; padding:16px 0; }
+
+  svg text{ font-family:var(--font-mono); }
+</style>
+</head>
+<body>
+<div class="tv">
+  <header>
+    <div class="brand">
+      <img src="logo.png" alt="" class="crest">
+      <div>
+        <h1>The Register — Live</h1>
+        <div class="sub">Eminent Edification</div>
+      </div>
+    </div>
+    <div class="live-status">
+      <div><span class="live-dot"></span><span id="nowClock"></span></div>
+      <div id="lastUpdated" style="margin-top:2px;"></div>
+    </div>
+  </header>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="main-grid">
+    <div class="card">
+      <h3>Attendance Rate by Class <span id="monthLabelClass" style="font-weight:400; font-size:13px; color:var(--ink-soft);"></span></h3>
+      <div class="body" id="classChartWrap"></div>
+    </div>
+    <div class="card">
+      <h3>Average Punctuality by Teacher <span id="monthLabelTeacher" style="font-weight:400; font-size:13px; color:var(--ink-soft);"></span></h3>
+      <div class="body" id="teacherChartWrap"></div>
+    </div>
+    <div class="card">
+      <h3>Alerts</h3>
+      <div class="body" id="alertsWrap"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Data source (same backend as the main dashboard) ----------
+function getBackendUrl(){
+  const saved = (localStorage.getItem('tuition_backend_url') || '').trim();
+  if(saved) return saved;
+  if(window.location.protocol !== 'file:') return window.location.origin;
+  return '';
+}
+const API_BASE = getBackendUrl().replace(/\/$/,'');
+
+async function apiGet(collection){
+  try{
+    const res = await fetch(`${API_BASE}/api/${collection}`);
+    if(res.status === 401){ window.location.href = '/login'; return []; }
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){ console.error(`Could not load ${collection}:`, e); return []; }
+}
+
+let teachers = [], classes = [], sessions = [], admissions = [];
+
+function className(id){ const c = classes.find(x=>x.id===id); return c ? c.name : '—'; }
+function teacherName(id){ const t = teachers.find(x=>x.id===id); return t ? t.name : '—'; }
+
+function minutesDiff(expectedHHMM, actualHHMM){
+  if(!expectedHHMM || !actualHHMM) return null;
+  const [eh,em] = expectedHHMM.split(':').map(Number);
+  const [ah,am] = actualHHMM.split(':').map(Number);
+  return (ah*60+am) - (eh*60+em);
+}
+
+function daysAgo(n){
+  const d = new Date(); d.setDate(d.getDate()-n);
+  return d.toISOString().slice(0,10);
+}
+
+function monthLabel(ym){
+  const [y,m] = ym.split('-').map(Number);
+  return new Date(y, m-1, 1).toLocaleDateString(undefined, {month:'long', year:'numeric'});
+}
+
+function computeClassStats(yearMonth){
+  return classes.map(cls=>{
+    const rows = sessions.filter(s=>s.classId===cls.id && s.date.slice(0,7)===yearMonth);
+    const physical = rows.reduce((s,r)=>s+r.physical,0);
+    const online = rows.reduce((s,r)=>s+r.online,0);
+    const absent = rows.reduce((s,r)=>s+r.absent,0);
+    const totalMarked = physical+online+absent;
+    return {
+      name: cls.name,
+      sessionCount: rows.length,
+      attendanceRate: totalMarked ? (physical+online)/totalMarked*100 : null
+    };
+  }).filter(c=>c.sessionCount>0);
+}
+
+function computeTeacherStats(yearMonth){
+  return teachers.map(t=>{
+    const teacherClassIds = classes.filter(c=>c.teacherId===t.id).map(c=>c.id);
+    const rows = sessions.filter(s=>teacherClassIds.includes(s.classId) && s.date.slice(0,7)===yearMonth);
+    const diffs = rows.map(r=>minutesDiff(r.expectedStart, r.actualStart)).filter(d=>d!==null);
+    return {
+      name: t.name,
+      sessionCount: rows.length,
+      avgPunctuality: diffs.length ? diffs.reduce((a,b)=>a+b,0)/diffs.length : null
+    };
+  }).filter(t=>t.sessionCount>0);
+}
+
+// Horizontal bar chart, plain SVG — no external library dependency.
+function horizontalBarSvg(items, opts){
+  const barHeight = 22, gap = 14, labelW = opts.labelW || 170, chartW = opts.chartW || 300, valueW = opts.valueW || 65;
+  const totalW = labelW + chartW + valueW;
+  const totalH = items.length * (barHeight + gap) || barHeight;
+  const truncate = s => s.length > 24 ? s.slice(0,23)+'…' : s;
+
+  let bars;
+  if(opts.signed){
+    const maxAbs = Math.max(opts.minScale || 10, ...items.map(it=>Math.abs(it.value)));
+    const zeroX = labelW + chartW/2;
+    const scale = (chartW/2) / maxAbs;
+    bars = items.map((it,i)=>{
+      const y = i*(barHeight+gap);
+      const barW = Math.abs(it.value) * scale;
+      const barX = it.value >= 0 ? zeroX : zeroX - barW;
+      return `
+        <text x="${labelW-8}" y="${y+barHeight/2}" text-anchor="end" dominant-baseline="middle" fill="#9AA6C3" font-size="14">${truncate(it.name)}</text>
+        <rect x="${labelW}" y="${y}" width="${chartW}" height="${barHeight}" rx="3" fill="rgba(231,234,242,0.06)"/>
+        <line x1="${zeroX}" y1="${y}" x2="${zeroX}" y2="${y+barHeight}" stroke="rgba(231,234,242,0.3)" stroke-width="1"/>
+        <rect x="${barX}" y="${y}" width="${barW}" height="${barHeight}" rx="3" fill="${it.color}"/>
+        <text x="${labelW+chartW+8}" y="${y+barHeight/2}" dominant-baseline="middle" fill="${it.color}" font-size="14">${it.label}</text>
+      `;
+    }).join('');
+  }else{
+    const max = opts.max || 100;
+    bars = items.map((it,i)=>{
+      const y = i*(barHeight+gap);
+      const barW = Math.max(0, Math.min(1, it.value/max)) * chartW;
+      return `
+        <text x="${labelW-8}" y="${y+barHeight/2}" text-anchor="end" dominant-baseline="middle" fill="#9AA6C3" font-size="14">${truncate(it.name)}</text>
+        <rect x="${labelW}" y="${y}" width="${chartW}" height="${barHeight}" rx="3" fill="rgba(231,234,242,0.08)"/>
+        <rect x="${labelW}" y="${y}" width="${barW}" height="${barHeight}" rx="3" fill="${it.color}"/>
+        <text x="${labelW+chartW+8}" y="${y+barHeight/2}" dominant-baseline="middle" fill="${it.color}" font-size="14">${it.label}</text>
+      `;
+    }).join('');
+  }
+  return `<svg width="100%" height="100%" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMinYMin meet">${bars}</svg>`;
+}
+
+function renderKpis(){
+  const wrap = document.getElementById('kpiRow');
+  const todayStr = new Date().toISOString().slice(0,10);
+  const monthStr = todayStr.slice(0,7);
+
+  const monthSessions = sessions.filter(s=>s.date.slice(0,7)===monthStr);
+  const diffs = monthSessions.map(s=>minutesDiff(s.expectedStart, s.actualStart)).filter(d=>d!==null);
+  const avgLate = diffs.length ? diffs.reduce((a,b)=>a+b,0)/diffs.length : null;
+  const todaySessions = sessions.filter(s=>s.date===todayStr);
+  const todayPresent = todaySessions.reduce((s,x)=>s+x.physical+x.online,0);
+  const monthAdmissions = admissions.filter(a=>a.date.slice(0,7)===monthStr).length;
+
+  const cards = [
+    { label:'Sessions This Month', value: monthSessions.length, foot: monthLabel(monthStr) },
+    { label:'Avg Punctuality', value: avgLate===null ? '—' : (avgLate>0?`+${Math.round(avgLate)}m`:`${Math.round(avgLate)}m`), foot: avgLate===null?'no data yet':(avgLate>2?'late on average':'on time on average') },
+    { label:'Present Today', value: todayPresent, foot: `${todaySessions.length} session${todaySessions.length===1?'':'s'} today` },
+    { label:'New Admissions', value: monthAdmissions, foot: monthLabel(monthStr) }
+  ];
+  wrap.innerHTML = cards.map(c=>`<div class="kpi-card"><div class="label">${c.label}</div><div class="value">${c.value}</div><div class="foot">${c.foot}</div></div>`).join('');
+}
+
+function renderClassChart(){
+  const monthStr = new Date().toISOString().slice(0,7);
+  document.getElementById('monthLabelClass').textContent = `(${monthLabel(monthStr)})`;
+  const wrap = document.getElementById('classChartWrap');
+  const data = computeClassStats(monthStr).filter(c=>c.attendanceRate!==null).sort((a,b)=>a.attendanceRate-b.attendanceRate);
+  if(!data.length){ wrap.innerHTML = '<div class="empty">No attendance data for this month.</div>'; return; }
+  const items = data.map(c=>({
+    name: c.name, value: c.attendanceRate,
+    color: c.attendanceRate<70 ? '#D6585B' : (c.attendanceRate>=90 ? '#C9A227' : '#5D7BB5'),
+    label: `${Math.round(c.attendanceRate)}%`
+  }));
+  wrap.innerHTML = horizontalBarSvg(items, { max:100 });
+}
+
+function renderTeacherChart(){
+  const monthStr = new Date().toISOString().slice(0,7);
+  document.getElementById('monthLabelTeacher').textContent = `(${monthLabel(monthStr)})`;
+  const wrap = document.getElementById('teacherChartWrap');
+  const data = computeTeacherStats(monthStr).filter(t=>t.avgPunctuality!==null).sort((a,b)=>b.avgPunctuality-a.avgPunctuality);
+  if(!data.length){ wrap.innerHTML = '<div class="empty">No punctuality data for this month.</div>'; return; }
+  const items = data.map(t=>({
+    name: t.name, value: t.avgPunctuality,
+    color: t.avgPunctuality>10 ? '#D6585B' : (t.avgPunctuality<=2 ? '#C9A227' : '#5D7BB5'),
+    label: t.avgPunctuality>0 ? `+${Math.round(t.avgPunctuality)}m` : (t.avgPunctuality<0 ? `${Math.round(t.avgPunctuality)}m` : '0m')
+  }));
+  wrap.innerHTML = horizontalBarSvg(items, { signed:true });
+}
+
+function renderAlerts(){
+  const wrap = document.getElementById('alertsWrap');
+  const alerts = [];
+
+  // Teacher punctuality, last 7 days
+  const byTeacher = {};
+  sessions.filter(s=>s.date>=daysAgo(7) && s.expectedStart).forEach(s=>{
+    const cls = classes.find(c=>c.id===s.classId);
+    if(!cls) return;
+    const diff = minutesDiff(s.expectedStart, s.actualStart);
+    if(diff===null) return;
+    byTeacher[cls.teacherId] = byTeacher[cls.teacherId] || [];
+    byTeacher[cls.teacherId].push(diff);
+  });
+  Object.entries(byTeacher).forEach(([teacherId, diffs])=>{
+    const avg = diffs.reduce((a,b)=>a+b,0)/diffs.length;
+    if(avg > 10) alerts.push(`<b>${teacherName(teacherId)}</b> is averaging ${Math.round(avg)} min late this week.`);
+  });
+
+  // Class attendance drop and high absence, last 7 vs prior 7 days
+  classes.forEach(c=>{
+    const recent = sessions.filter(s=>s.classId===c.id && s.date>=daysAgo(7));
+    const prior = sessions.filter(s=>s.classId===c.id && s.date>=daysAgo(14) && s.date<daysAgo(7));
+    const totalRecent = recent.reduce((sum,s)=>sum+s.physical+s.online,0);
+    const totalPrior = prior.reduce((sum,s)=>sum+s.physical+s.online,0);
+    if(totalPrior>0 && totalRecent < totalPrior*0.8){
+      const dropPct = Math.round((1-totalRecent/totalPrior)*100);
+      alerts.push(`Attendance in <b>${c.name}</b> dropped ${dropPct}% vs the prior week.`);
+    }
+    const absentSum = recent.reduce((s2,s)=>s2+s.absent,0);
+    const presentSum = recent.reduce((s2,s)=>s2+s.physical+s.online,0);
+    if(absentSum+presentSum>0 && absentSum/(absentSum+presentSum) > 0.3){
+      alerts.push(`<b>${c.name}</b> has an absence rate above 30% this week.`);
+    }
+  });
+
+  const recentAdmissions = admissions.filter(a=>a.date>=daysAgo(14));
+  if(admissions.length>0 && recentAdmissions.length===0){
+    alerts.push(`No new admissions recorded in the last 14 days.`);
+  }
+
+  if(!alerts.length){ wrap.innerHTML = '<div class="empty">No alerts right now — things look steady.</div>'; return; }
+  wrap.innerHTML = alerts.slice(0,6).map(txt=>`<div class="alert-row"><div class="dot"></div><div class="txt">${txt}</div></div>`).join('');
+}
+
+function updateClock(){
+  const now = new Date();
+  document.getElementById('nowClock').textContent = now.toLocaleString(undefined, {
+    weekday:'short', year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'
+  });
+}
+
+async function refreshAll(){
+  [teachers, classes, sessions, admissions] = await Promise.all([
+    apiGet('teachers'), apiGet('classes'), apiGet('sessions'), apiGet('admissions')
+  ]);
+  renderKpis();
+  renderClassChart();
+  renderTeacherChart();
+  renderAlerts();
+  document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+updateClock();
+setInterval(updateClock, 1000);
+refreshAll();
+setInterval(refreshAll, 60000); // refresh data every 60 seconds
+</script>
+</body>
+</html>

@@ -239,17 +239,6 @@
       </div>
     </div>
 
-    <div class="grid two" style="margin-bottom:18px;">
-      <div class="card">
-        <h3>Attendance Rate by Class <span id="classChartMonthLabel" style="font-weight:400; font-size:11px; color:var(--ink-soft);"></span></h3>
-        <canvas id="classAttendanceChart"></canvas>
-      </div>
-      <div class="card">
-        <h3>Average Punctuality by Teacher <span id="teacherChartMonthLabel" style="font-weight:400; font-size:11px; color:var(--ink-soft);"></span></h3>
-        <canvas id="teacherPunctualityChart"></canvas>
-      </div>
-    </div>
-
     <div class="card" style="margin-bottom:18px;">
       <div class="toprow">
         <h3 style="margin:0;">Class-wise Performance</h3>
@@ -270,6 +259,17 @@
         </div>
       </div>
       <div id="teacherPerformanceTableWrap"></div>
+    </div>
+
+    <div class="grid two" style="margin-bottom:18px;">
+      <div class="card">
+        <h3>Attendance Rate by Class <span id="classChartMonthLabel" style="font-weight:400; font-size:11px; color:var(--ink-soft);"></span></h3>
+        <div id="classAttendanceChartWrap"></div>
+      </div>
+      <div class="card">
+        <h3>Average Punctuality by Teacher <span id="teacherChartMonthLabel" style="font-weight:400; font-size:11px; color:var(--ink-soft);"></span></h3>
+        <div id="teacherPunctualityChartWrap"></div>
+      </div>
     </div>
 
     <div class="grid two" style="margin-bottom:18px;">
@@ -1566,7 +1566,6 @@ function renderTeacherPerformanceTable(){
   </tbody></table>`;
 }
 
-let classAttendanceChart, teacherPunctualityChart;
 
 // ---------- Monthly Hours Tracker ----------
 // Rings are drawn as plain SVG (no external library) so they render
@@ -1748,64 +1747,78 @@ document.getElementById('hoursThisMonthBtn').addEventListener('click', ()=>{
 });
 
 
+// Horizontal bar chart, plain SVG — no external library dependency, so
+// it renders reliably even where Chart.js fails to load from its CDN.
+function horizontalBarSvg(items, opts){
+  const barHeight = 18, gap = 12, labelW = opts.labelW || 130, chartW = opts.chartW || 220, valueW = opts.valueW || 55;
+  const totalW = labelW + chartW + valueW;
+  const totalH = items.length * (barHeight + gap) || barHeight;
+  const truncate = s => s.length > 20 ? s.slice(0,19)+'…' : s;
+
+  let bars;
+  if(opts.signed){
+    // Bars can go left (negative) or right (positive) from a zero line.
+    const maxAbs = Math.max(opts.minScale || 10, ...items.map(it=>Math.abs(it.value)));
+    const zeroX = labelW + chartW/2;
+    const scale = (chartW/2) / maxAbs;
+    bars = items.map((it,i)=>{
+      const y = i*(barHeight+gap);
+      const barW = Math.abs(it.value) * scale;
+      const barX = it.value >= 0 ? zeroX : zeroX - barW;
+      return `
+        <text x="${labelW-8}" y="${y+barHeight/2}" text-anchor="end" dominant-baseline="middle" fill="#9AA6C3" font-size="11" font-family="SFMono-Regular, Consolas, monospace">${truncate(it.name)}</text>
+        <rect x="${labelW}" y="${y}" width="${chartW}" height="${barHeight}" rx="3" fill="rgba(231,234,242,0.06)"/>
+        <line x1="${zeroX}" y1="${y}" x2="${zeroX}" y2="${y+barHeight}" stroke="rgba(231,234,242,0.3)" stroke-width="1"/>
+        <rect x="${barX}" y="${y}" width="${barW}" height="${barHeight}" rx="3" fill="${it.color}"/>
+        <text x="${labelW+chartW+8}" y="${y+barHeight/2}" dominant-baseline="middle" fill="${it.color}" font-size="11" font-family="SFMono-Regular, Consolas, monospace">${it.label}</text>
+      `;
+    }).join('');
+  }else{
+    // Simple 0-100% style bar.
+    const max = opts.max || 100;
+    bars = items.map((it,i)=>{
+      const y = i*(barHeight+gap);
+      const barW = Math.max(0, Math.min(1, it.value/max)) * chartW;
+      return `
+        <text x="${labelW-8}" y="${y+barHeight/2}" text-anchor="end" dominant-baseline="middle" fill="#9AA6C3" font-size="11" font-family="SFMono-Regular, Consolas, monospace">${truncate(it.name)}</text>
+        <rect x="${labelW}" y="${y}" width="${chartW}" height="${barHeight}" rx="3" fill="rgba(231,234,242,0.08)"/>
+        <rect x="${labelW}" y="${y}" width="${barW}" height="${barHeight}" rx="3" fill="${it.color}"/>
+        <text x="${labelW+chartW+8}" y="${y+barHeight/2}" dominant-baseline="middle" fill="${it.color}" font-size="11" font-family="SFMono-Regular, Consolas, monospace">${it.label}</text>
+      `;
+    }).join('');
+  }
+
+  return `<svg width="100%" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMinYMin meet">${bars}</svg>`;
+}
+
 function renderClassAttendanceChart(){
-  const el = document.getElementById('classAttendanceChart');
+  const wrap = document.getElementById('classAttendanceChartWrap');
   const yearMonth = resolvePerfMonth(classPerfScope);
   document.getElementById('classChartMonthLabel').textContent = `(${monthLabel(yearMonth)})`;
-  if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping.'); return; }
   const data = computeClassStats(yearMonth).filter(c=>c.attendanceRate!==null).sort((a,b)=>a.attendanceRate-b.attendanceRate);
-  if(classAttendanceChart) classAttendanceChart.destroy();
-  if(!data.length) return;
-  classAttendanceChart = new Chart(el.getContext('2d'), {
-    type:'bar',
-    data:{
-      labels: data.map(c=>c.name),
-      datasets:[{
-        label:'Attendance rate %',
-        data: data.map(c=>Math.round(c.attendanceRate)),
-        backgroundColor: data.map(c=> c.attendanceRate<70 ? '#D6585B' : (c.attendanceRate>=90 ? '#C9A227' : '#5D7BB5'))
-      }]
-    },
-    options:{
-      indexAxis:'y',
-      responsive:true,
-      plugins:{legend:{display:false}},
-      scales:{
-        x:{beginAtZero:true, max:100, ticks:{color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}},
-        y:{ticks:{color:'#9AA6C3', font:{size:10}}, grid:{display:false}}
-      }
-    }
-  });
+  if(!data.length){ wrap.innerHTML = '<div class="empty">No attendance data for this month.</div>'; return; }
+  const items = data.map(c=>({
+    name: c.name,
+    value: c.attendanceRate,
+    color: c.attendanceRate<70 ? '#D6585B' : (c.attendanceRate>=90 ? '#C9A227' : '#5D7BB5'),
+    label: `${Math.round(c.attendanceRate)}%`
+  }));
+  wrap.innerHTML = horizontalBarSvg(items, { max:100 });
 }
 
 function renderTeacherPunctualityChart(){
-  const el = document.getElementById('teacherPunctualityChart');
+  const wrap = document.getElementById('teacherPunctualityChartWrap');
   const yearMonth = resolvePerfMonth(teacherPerfScope);
   document.getElementById('teacherChartMonthLabel').textContent = `(${monthLabel(yearMonth)})`;
-  if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping.'); return; }
   const data = computeTeacherStats(yearMonth).filter(t=>t.avgPunctuality!==null).sort((a,b)=>b.avgPunctuality-a.avgPunctuality);
-  if(teacherPunctualityChart) teacherPunctualityChart.destroy();
-  if(!data.length) return;
-  teacherPunctualityChart = new Chart(el.getContext('2d'), {
-    type:'bar',
-    data:{
-      labels: data.map(t=>t.name),
-      datasets:[{
-        label:'Avg minutes late (negative = early)',
-        data: data.map(t=>Math.round(t.avgPunctuality)),
-        backgroundColor: data.map(t=> t.avgPunctuality>10 ? '#D6585B' : (t.avgPunctuality<=2 ? '#C9A227' : '#5D7BB5'))
-      }]
-    },
-    options:{
-      indexAxis:'y',
-      responsive:true,
-      plugins:{legend:{display:false}},
-      scales:{
-        x:{ticks:{color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}},
-        y:{ticks:{color:'#9AA6C3', font:{size:10}}, grid:{display:false}}
-      }
-    }
-  });
+  if(!data.length){ wrap.innerHTML = '<div class="empty">No punctuality data for this month.</div>'; return; }
+  const items = data.map(t=>({
+    name: t.name,
+    value: t.avgPunctuality,
+    color: t.avgPunctuality>10 ? '#D6585B' : (t.avgPunctuality<=2 ? '#C9A227' : '#5D7BB5'),
+    label: t.avgPunctuality>0 ? `+${Math.round(t.avgPunctuality)}m` : (t.avgPunctuality<0 ? `${Math.round(t.avgPunctuality)}m` : '0m')
+  }));
+  wrap.innerHTML = horizontalBarSvg(items, { signed:true });
 }
 
 function daysAgo(n){

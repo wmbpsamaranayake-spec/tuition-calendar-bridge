@@ -386,7 +386,13 @@ COLLECTIONS.forEach(name => {
     }
   });
 
-  app.delete(`/api/${name}/:id`, requireAuth(), async (req, res) => {
+  // Editing AND deleting sessions is admin-only — staff can log new
+  // sessions, but shouldn't be able to rewrite or erase punctuality/
+  // attendance history after the fact. Other collections (teachers,
+  // classes, admissions) stay editable/deletable by any logged-in user.
+  const restrictedAuth = name === 'sessions' ? requireAuth('admin') : requireAuth();
+
+  app.delete(`/api/${name}/:id`, restrictedAuth, async (req, res) => {
     try {
       await db.collection(name).deleteOne({ id: req.params.id });
       res.json({ ok: true });
@@ -396,7 +402,7 @@ COLLECTIONS.forEach(name => {
     }
   });
 
-  app.put(`/api/${name}/:id`, requireAuth(), async (req, res) => {
+  app.put(`/api/${name}/:id`, restrictedAuth, async (req, res) => {
     try {
       const { id, _id, ...updateFields } = req.body || {};
       await db.collection(name).updateOne({ id: req.params.id }, { $set: updateFields });

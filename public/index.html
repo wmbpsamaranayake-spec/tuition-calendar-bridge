@@ -173,6 +173,10 @@
   table.perf-table td.warn{color:var(--stamp); font-weight:600;}
   table.perf-table td.good{color:var(--brass-dark);}
 
+  /* Month toggle for class-wise / teacher-wise performance */
+  .perf-month-toggle{display:flex; gap:6px;}
+  .perf-month-btn.active{background:var(--brass); color:var(--pine-dark); border-color:var(--brass); font-weight:700;}
+
   /* Monthly hours tracker */
   .hours-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:14px; margin:10px 0 6px 18px;}
   .hours-card{background:var(--card); border:1px solid var(--line); border-radius:4px; padding:12px 8px; text-align:center;}
@@ -248,22 +252,34 @@
 
     <div class="grid two" style="margin-bottom:18px;">
       <div class="card">
-        <h3>Attendance Rate by Class</h3>
+        <h3>Attendance Rate by Class <span id="classChartMonthLabel" style="font-weight:400; font-size:11px; color:var(--ink-soft);"></span></h3>
         <canvas id="classAttendanceChart"></canvas>
       </div>
       <div class="card">
-        <h3>Average Punctuality by Teacher</h3>
+        <h3>Average Punctuality by Teacher <span id="teacherChartMonthLabel" style="font-weight:400; font-size:11px; color:var(--ink-soft);"></span></h3>
         <canvas id="teacherPunctualityChart"></canvas>
       </div>
     </div>
 
     <div class="card" style="margin-bottom:18px;">
-      <div class="toprow"><h3 style="margin:0;">Class-wise Performance</h3><span class="chip">All-time</span></div>
+      <div class="toprow">
+        <h3 style="margin:0;">Class-wise Performance</h3>
+        <div class="perf-month-toggle" data-target="class">
+          <button class="ghost perf-month-btn" data-scope="previous">Previous Month</button>
+          <button class="ghost perf-month-btn" data-scope="current">This Month</button>
+        </div>
+      </div>
       <div id="classPerformanceTableWrap"></div>
     </div>
 
     <div class="card" style="margin-bottom:18px;">
-      <div class="toprow"><h3 style="margin:0;">Teacher-wise Performance</h3><span class="chip">All-time</span></div>
+      <div class="toprow">
+        <h3 style="margin:0;">Teacher-wise Performance</h3>
+        <div class="perf-month-toggle" data-target="teacher">
+          <button class="ghost perf-month-btn" data-scope="previous">Previous Month</button>
+          <button class="ghost perf-month-btn" data-scope="current">This Month</button>
+        </div>
+      </div>
       <div id="teacherPerformanceTableWrap"></div>
     </div>
 
@@ -1400,10 +1416,10 @@ function computePunctualityByTeacher(withinDays=7){
   })).sort((a,b)=>b.avg-a.avg);
 }
 
-// All-time (not windowed) per-class stats: attendance rate and punctuality.
-function computeClassStats(){
+// Per-class stats for a given month (YYYY-MM): attendance rate and punctuality.
+function computeClassStats(yearMonth){
   return classes.map(cls=>{
-    const rows = sessions.filter(s=>s.classId===cls.id);
+    const rows = sessions.filter(s=>s.classId===cls.id && s.date.slice(0,7)===yearMonth);
     const physical = rows.reduce((s,r)=>s+r.physical,0);
     const online = rows.reduce((s,r)=>s+r.online,0);
     const absent = rows.reduce((s,r)=>s+r.absent,0);
@@ -1421,11 +1437,11 @@ function computeClassStats(){
   }).filter(c=>c.sessionCount>0);
 }
 
-// All-time (not windowed) per-teacher stats, rolled up across their classes.
-function computeTeacherStats(){
+// Per-teacher stats for a given month (YYYY-MM), rolled up across their classes.
+function computeTeacherStats(yearMonth){
   return teachers.map(t=>{
     const teacherClassIds = classes.filter(c=>c.teacherId===t.id).map(c=>c.id);
-    const rows = sessions.filter(s=>teacherClassIds.includes(s.classId));
+    const rows = sessions.filter(s=>teacherClassIds.includes(s.classId) && s.date.slice(0,7)===yearMonth);
     const physical = rows.reduce((s,r)=>s+r.physical,0);
     const online = rows.reduce((s,r)=>s+r.online,0);
     const absent = rows.reduce((s,r)=>s+r.absent,0);
@@ -1443,10 +1459,48 @@ function computeTeacherStats(){
   }).filter(t=>t.sessionCount>0);
 }
 
+// ---------- Month scope for Class-wise / Teacher-wise performance ----------
+let classPerfScope = 'current';   // 'current' | 'previous'
+let teacherPerfScope = 'current'; // 'current' | 'previous'
+
+function resolvePerfMonth(scope){
+  const d = new Date();
+  if(scope === 'previous') d.setMonth(d.getMonth()-1);
+  return d.toISOString().slice(0,7);
+}
+
+function updatePerfMonthButtonStyles(){
+  document.querySelectorAll('.perf-month-toggle').forEach(group=>{
+    const target = group.dataset.target;
+    const activeScope = target === 'class' ? classPerfScope : teacherPerfScope;
+    group.querySelectorAll('.perf-month-btn').forEach(btn=>{
+      btn.classList.toggle('active', btn.dataset.scope === activeScope);
+    });
+  });
+}
+
+document.querySelectorAll('.perf-month-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const group = btn.closest('.perf-month-toggle');
+    const target = group.dataset.target;
+    if(target === 'class'){
+      classPerfScope = btn.dataset.scope;
+      renderClassPerformanceTable();
+      renderClassAttendanceChart();
+    }else{
+      teacherPerfScope = btn.dataset.scope;
+      renderTeacherPerformanceTable();
+      renderTeacherPunctualityChart();
+    }
+    updatePerfMonthButtonStyles();
+  });
+});
+
 function renderClassPerformanceTable(){
   const wrap = document.getElementById('classPerformanceTableWrap');
-  const data = computeClassStats().sort((a,b)=> (a.attendanceRate??999) - (b.attendanceRate??999));
-  if(!data.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
+  const yearMonth = resolvePerfMonth(classPerfScope);
+  const data = computeClassStats(yearMonth).sort((a,b)=> (a.attendanceRate??999) - (b.attendanceRate??999));
+  if(!data.length){ wrap.innerHTML = `<div class="empty">No sessions logged for ${monthLabel(yearMonth)}.</div>`; return; }
   wrap.innerHTML = `<table class="perf-table"><thead><tr>
     <th>Class</th><th>Teacher</th><th>Sessions</th><th>Physical</th><th>Online</th><th>Absent</th><th>Attendance Rate</th><th>Avg Punctuality</th>
   </tr></thead><tbody>
@@ -1471,8 +1525,9 @@ function renderClassPerformanceTable(){
 
 function renderTeacherPerformanceTable(){
   const wrap = document.getElementById('teacherPerformanceTableWrap');
-  const data = computeTeacherStats().sort((a,b)=> (a.attendanceRate??999) - (b.attendanceRate??999));
-  if(!data.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
+  const yearMonth = resolvePerfMonth(teacherPerfScope);
+  const data = computeTeacherStats(yearMonth).sort((a,b)=> (a.attendanceRate??999) - (b.attendanceRate??999));
+  if(!data.length){ wrap.innerHTML = `<div class="empty">No sessions logged for ${monthLabel(yearMonth)}.</div>`; return; }
   wrap.innerHTML = `<table class="perf-table"><thead><tr>
     <th>Teacher</th><th>Classes</th><th>Sessions</th><th>Physical</th><th>Online</th><th>Absent</th><th>Attendance Rate</th><th>Avg Punctuality</th>
   </tr></thead><tbody>
@@ -1556,6 +1611,7 @@ function renderHoursTracker(){
   if(!classes.length){ wrap.innerHTML = '<div class="empty">Add some classes first, with a planned monthly hours target, to see progress here.</div>'; return; }
 
   const expectedPct = expectedPacePercent(yearMonth);
+  const isFutureMonth = yearMonth > new Date().toISOString().slice(0,7);
   const PACE_BUFFER = 10; // percentage points of slack before flagging "behind"
 
   // Group: teacher -> grade -> classes
@@ -1582,6 +1638,8 @@ function renderHoursTracker(){
         let status, color;
         if(planned===0){
           status = 'No target set'; color = '#9AA6C3';
+        }else if(isFutureMonth){
+          status = 'Upcoming'; color = '#9AA6C3';
         }else if(completed >= planned){
           status = 'Target met'; color = '#C9A227';
         }else if(pct >= expectedPct - PACE_BUFFER){
@@ -1622,8 +1680,10 @@ document.getElementById('hoursThisMonthBtn').addEventListener('click', ()=>{
 
 function renderClassAttendanceChart(){
   const el = document.getElementById('classAttendanceChart');
+  const yearMonth = resolvePerfMonth(classPerfScope);
+  document.getElementById('classChartMonthLabel').textContent = `(${monthLabel(yearMonth)})`;
   if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping.'); return; }
-  const data = computeClassStats().filter(c=>c.attendanceRate!==null).sort((a,b)=>a.attendanceRate-b.attendanceRate);
+  const data = computeClassStats(yearMonth).filter(c=>c.attendanceRate!==null).sort((a,b)=>a.attendanceRate-b.attendanceRate);
   if(classAttendanceChart) classAttendanceChart.destroy();
   if(!data.length) return;
   classAttendanceChart = new Chart(el.getContext('2d'), {
@@ -1650,8 +1710,10 @@ function renderClassAttendanceChart(){
 
 function renderTeacherPunctualityChart(){
   const el = document.getElementById('teacherPunctualityChart');
+  const yearMonth = resolvePerfMonth(teacherPerfScope);
+  document.getElementById('teacherChartMonthLabel').textContent = `(${monthLabel(yearMonth)})`;
   if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping.'); return; }
-  const data = computeTeacherStats().filter(t=>t.avgPunctuality!==null).sort((a,b)=>b.avgPunctuality-a.avgPunctuality);
+  const data = computeTeacherStats(yearMonth).filter(t=>t.avgPunctuality!==null).sort((a,b)=>b.avgPunctuality-a.avgPunctuality);
   if(teacherPunctualityChart) teacherPunctualityChart.destroy();
   if(!data.length) return;
   teacherPunctualityChart = new Chart(el.getContext('2d'), {
@@ -1942,6 +2004,7 @@ function renderDashboard(){
   renderTeacherPunctualityChart();
   renderClassPerformanceTable();
   renderTeacherPerformanceTable();
+  updatePerfMonthButtonStyles();
 }
 
 function renderAll(){

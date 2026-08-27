@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — The Register</title>
+<style>
+  :root{
+    --paper: #0A1530;
+    --card: #16264F;
+    --ink: #E7EAF2;
+    --ink-soft: #9AA6C3;
+    --brass: #C9A227;
+    --brass-dark: #E3BE4E;
+    --stamp: #D6585B;
+    --line: rgba(231,234,242,0.14);
+    --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:var(--paper); color:var(--ink); font-family:var(--font-body);
+  }
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:6px;
+    padding:34px 32px; width:100%; max-width:340px; box-shadow:0 4px 24px rgba(0,0,0,0.3);
+  }
+  h1{
+    font-family:var(--font-display); font-weight:700; font-size:24px; margin:0 0 4px;
+    color:var(--brass-dark); text-align:center;
+  }
+  .sub{font-size:11.5px; text-transform:uppercase; letter-spacing:2px; color:var(--ink-soft); text-align:center; margin-bottom:26px;}
+  label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--ink-soft); margin-bottom:6px;}
+  input{
+    width:100%; font-family:var(--font-mono); font-size:14px; padding:10px 11px;
+    border:1px solid var(--line); border-radius:3px; background:#fff; color:#16233F; margin-bottom:16px;
+  }
+  button{
+    width:100%; font-family:var(--font-display); font-weight:700; letter-spacing:0.3px; font-size:14px;
+    background:var(--brass); color:#0A1530; border:none; padding:11px; border-radius:3px; cursor:pointer;
+  }
+  button:hover{background:#B08D22;}
+  button:disabled{opacity:0.6; cursor:wait;}
+  .error{color:var(--stamp); font-size:12.5px; margin-top:14px; text-align:center; min-height:16px;}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>The Register</h1>
+    <div class="sub">Eminent Edification</div>
+    <form id="loginForm">
+      <label>Username</label>
+      <input type="text" id="username" autocomplete="username" required>
+      <label>Password</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+      <button type="submit" id="loginBtn">Sign in</button>
+      <div class="error" id="errorMsg"></div>
+    </form>
+  </div>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const btn = document.getElementById('loginBtn');
+      const errorMsg = document.getElementById('errorMsg');
+      errorMsg.textContent = '';
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      try{
+        const res = await fetch('/api/login', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value
+          })
+        });
+        if(res.ok){
+          window.location.href = '/app';
+        }else{
+          errorMsg.textContent = 'Incorrect username or password.';
+        }
+      }catch(err){
+        errorMsg.textContent = 'Could not reach the server. Check your connection.';
+      }finally{
+        btn.disabled = false; btn.textContent = 'Sign in';
+      }
+    });
+  </script>
+</body>
+</html>

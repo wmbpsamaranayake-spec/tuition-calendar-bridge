@@ -474,6 +474,19 @@
 
 </div>
 
+<!-- SMS confirmation popup, shown after saving a new session -->
+<div id="smsModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(10,21,48,0.7); z-index:1000; align-items:center; justify-content:center; padding:16px;">
+  <div class="card" style="max-width:440px; width:100%;">
+    <h3 style="margin-top:0;">Session Saved — Send SMS?</h3>
+    <div id="smsModalSummary" style="font-size:13px; line-height:1.6; margin-bottom:14px;"></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="ghost" id="smsModalSkipBtn">Skip</button>
+      <button class="primary" id="smsModalSendBtn">Send SMS</button>
+    </div>
+    <div id="smsModalStatus" style="margin-top:12px; font-size:12.5px;"></div>
+  </div>
+</div>
+
 <script>
 const DAYS = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
 const DAY_INDEX = {sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
@@ -1106,8 +1119,73 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
     document.getElementById('s_date').valueAsDate = new Date();
     document.getElementById('s_expected').value='';
     currentExpected = { value: null, source: null, finish: null };
+    showSmsModalForSession(item.id);
   }
   renderSessionsTable();
+});
+
+// ---------- SMS confirmation popup ----------
+let pendingSmsSessionId = null;
+
+async function showSmsModalForSession(sessionId){
+  pendingSmsSessionId = sessionId;
+  const summary = document.getElementById('smsModalSummary');
+  const sendBtn = document.getElementById('smsModalSendBtn');
+  const status = document.getElementById('smsModalStatus');
+  status.textContent = '';
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Send SMS';
+  summary.textContent = 'Loading preview…';
+  document.getElementById('smsModalOverlay').style.display = 'flex';
+
+  try{
+    const res = await fetch(`${apiBase()}/api/sessions/${sessionId}/sms-preview`);
+    if(!res.ok){
+      summary.textContent = 'Could not load a message preview for this session.';
+      return;
+    }
+    const data = await res.json();
+    const recipientsLine = data.recipients.length
+      ? `Will send to: ${data.recipients.map(r=>r.label).join(', ')}`
+      : 'No phone numbers on file for this teacher or the Operations Manager — nothing to send.';
+
+    summary.innerHTML = `
+      <div style="white-space:pre-wrap; font-family:var(--font-mono); font-size:12.5px; background:var(--paper-dark); padding:10px; border-radius:4px; margin-bottom:10px; border:1px solid var(--line);">${data.text}</div>
+      <div style="font-size:12px; color:var(--ink-soft);">${recipientsLine}</div>
+      ${!data.smsConfigured ? '<div style="font-size:12px; color:var(--stamp); margin-top:6px;">SMS sending isn\'t configured on this environment.</div>' : ''}
+    `;
+    sendBtn.disabled = data.recipients.length === 0 || !data.smsConfigured;
+  }catch(e){
+    summary.textContent = 'Could not load a message preview — check your connection.';
+  }
+}
+
+function closeSmsModal(){
+  document.getElementById('smsModalOverlay').style.display = 'none';
+  pendingSmsSessionId = null;
+}
+
+document.getElementById('smsModalSkipBtn').addEventListener('click', closeSmsModal);
+
+document.getElementById('smsModalSendBtn').addEventListener('click', async ()=>{
+  if(!pendingSmsSessionId) return;
+  const sendBtn = document.getElementById('smsModalSendBtn');
+  const status = document.getElementById('smsModalStatus');
+  sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+  try{
+    const res = await fetch(`${apiBase()}/api/sessions/${pendingSmsSessionId}/send-sms`, { method:'POST' });
+    const data = await res.json();
+    if(!res.ok){
+      status.innerHTML = `<span style="color:var(--stamp);">Could not send — ${data.error || 'please try again'}.</span>`;
+      sendBtn.disabled = false; sendBtn.textContent = 'Send SMS';
+      return;
+    }
+    status.innerHTML = `<span style="color:var(--brass-dark);">Sent to ${data.results.map(r=>r.label).join(', ')}.</span>`;
+    sendBtn.textContent = 'Sent';
+  }catch(e){
+    status.innerHTML = '<span style="color:var(--stamp);">Could not reach the server.</span>';
+    sendBtn.disabled = false; sendBtn.textContent = 'Send SMS';
+  }
 });
 
 function editSession(id){

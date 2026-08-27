@@ -1176,6 +1176,7 @@ function classTeacherName(classId){ const c = classes.find(x=>x.id===classId); r
 function renderTeachersTable(){
   const wrap = document.getElementById('teachersTableWrap');
   if(!teachers.length){ wrap.innerHTML = '<div class="empty">No teachers added yet.</div>'; return; }
+  const canDelete = currentUser && currentUser.role === 'admin';
   wrap.innerHTML = `<table><thead><tr><th>Name</th><th>Mobile</th><th>SMS alerts</th><th>Classes assigned</th><th></th></tr></thead><tbody>
     ${teachers.map(t=>{
       const count = classes.filter(c=>c.teacherId===t.id).length;
@@ -1184,7 +1185,7 @@ function renderTeachersTable(){
         <td class="txt">${t.phone || '—'}</td>
         <td class="txt">${t.phone ? '<span style="color:var(--brass-dark);">On</span>' : '<span style="color:var(--ink-soft);">Off</span>'}</td>
         <td>${count}</td>
-        <td><button class="ghost" onclick="editTeacher('${t.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button></td>
+        <td><button class="ghost" onclick="editTeacher('${t.id}')" style="margin-right:6px;">Edit</button>${canDelete ? `<button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button>` : ''}</td>
       </tr>`;
     }).join('')}
   </tbody></table>`;
@@ -1193,10 +1194,11 @@ function renderTeachersTable(){
 function renderClassesTable(){
   const wrap = document.getElementById('classesTableWrap');
   if(!classes.length){ wrap.innerHTML = '<div class="empty">No classes added yet.</div>'; return; }
+  const canDelete = currentUser && currentUser.role === 'admin';
   wrap.innerHTML = `<table><thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Schedule</th><th></th></tr></thead><tbody>
     ${classes.map(c=>{
       const sched = DAYS.filter(([k])=>c.schedule && c.schedule[k]).map(([k,l])=>`${l} ${c.schedule[k]}`).join(', ') || 'Not set';
-      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td class="txt">${sched}</td><td><button class="ghost" onclick="editClass('${c.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button></td></tr>`;
+      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td class="txt">${sched}</td><td><button class="ghost" onclick="editClass('${c.id}')" style="margin-right:6px;">Edit</button>${canDelete ? `<button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button>` : ''}</td></tr>`;
     }).join('')}
   </tbody></table>`;
 }

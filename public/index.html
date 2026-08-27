@@ -286,7 +286,8 @@
           <textarea id="s_notes" placeholder="Anything worth flagging about today's class..."></textarea>
         </div>
         <div class="full">
-          <button type="submit" class="primary">Save session</button>
+          <button type="submit" class="primary" id="sessionSubmitBtn">Save session</button>
+          <button type="button" class="ghost" id="sessionCancelBtn" style="display:none; margin-left:8px;">Cancel edit</button>
         </div>
       </form>
     </div>
@@ -319,7 +320,8 @@
           <div class="schedule-days" id="scheduleDays"></div>
         </div>
         <div class="full">
-          <button type="submit" class="primary">Save class</button>
+          <button type="submit" class="primary" id="classSubmitBtn">Save class</button>
+          <button type="button" class="ghost" id="classCancelBtn" style="display:none; margin-left:8px;">Cancel edit</button>
         </div>
       </form>
     </div>
@@ -347,7 +349,8 @@
           <input type="date" id="a_date" required>
         </div>
         <div class="full">
-          <button type="submit" class="primary">Save admission</button>
+          <button type="submit" class="primary" id="admissionSubmitBtn">Save admission</button>
+          <button type="button" class="ghost" id="admissionCancelBtn" style="display:none; margin-left:8px;">Cancel edit</button>
         </div>
       </form>
     </div>
@@ -372,7 +375,8 @@
           <input type="tel" id="t_phone" placeholder="0771234567">
         </div>
         <div class="full">
-          <button type="submit" class="primary">Save teacher</button>
+          <button type="submit" class="primary" id="teacherSubmitBtn">Save teacher</button>
+          <button type="button" class="ghost" id="teacherCancelBtn" style="display:none; margin-left:8px;">Cancel edit</button>
         </div>
       </form>
     </div>
@@ -446,7 +450,7 @@
           <input type="text" id="u_name" autocomplete="off">
         </div>
         <div>
-          <label>Password</label>
+          <label id="u_passwordLabel">Password</label>
           <input type="password" id="u_password" autocomplete="new-password" required>
         </div>
         <div>
@@ -457,7 +461,8 @@
           </select>
         </div>
         <div class="full">
-          <button type="submit" class="primary">Create login</button>
+          <button type="submit" class="primary" id="userSubmitBtn">Create login</button>
+          <button type="button" class="ghost" id="userCancelBtn" style="display:none; margin-left:8px;">Cancel edit</button>
         </div>
       </form>
     </div>
@@ -549,6 +554,18 @@ async function apiDelete(collection, id){
   if(handleAuthFailure(res.status)) throw new Error('not_authenticated');
   if(!res.ok) throw new Error('delete_failed');
 }
+async function apiUpdate(collection, id, item){
+  const base = apiBase();
+  if(!base) throw new Error('no_backend');
+  const res = await fetch(`${base}/api/${collection}/${id}`, {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(item)
+  });
+  if(handleAuthFailure(res.status)) throw new Error('not_authenticated');
+  if(!res.ok) throw new Error('update_failed');
+  return await res.json();
+}
 
 // ---------- Current user / auth ----------
 async function loadCurrentUser(){
@@ -602,7 +619,7 @@ function renderUsersTable(){
       <td class="txt">${u.username}</td>
       <td class="txt">${u.name || ''}</td>
       <td class="txt">${u.role}</td>
-      <td><button class="ghost danger" onclick="deleteUser('${u.id}')">Remove</button></td>
+      <td><button class="ghost" onclick="editUser('${u.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteUser('${u.id}')">Remove</button></td>
     </tr>`).join('')}
   </tbody></table>`;
 }
@@ -624,33 +641,83 @@ async function deleteUser(id){
 }
 window.deleteUser = deleteUser;
 
+let editingUserId = null;
+
 document.getElementById('userForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   if(!requireBackend()) return;
-  const status = document.getElementById('u_username');
+  const password = document.getElementById('u_password').value;
+
   try{
-    const res = await fetch(`${apiBase()}/api/users`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        username: document.getElementById('u_username').value.trim(),
-        password: document.getElementById('u_password').value,
+    if(editingUserId){
+      const payload = {
         name: document.getElementById('u_name').value.trim(),
         role: document.getElementById('u_role').value
-      })
-    });
-    if(res.status === 409){
-      alert('That username is already taken.');
-      return;
+      };
+      if(password) payload.password = password; // only change password if a new one was typed
+      const res = await fetch(`${apiBase()}/api/users/${editingUserId}`, {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      if(res.status === 400){
+        alert("Can't demote the last remaining admin to staff.");
+        return;
+      }
+      if(!res.ok) throw new Error('update_failed');
+      cancelUserEdit();
+    }else{
+      const res = await fetch(`${apiBase()}/api/users`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          username: document.getElementById('u_username').value.trim(),
+          password,
+          name: document.getElementById('u_name').value.trim(),
+          role: document.getElementById('u_role').value
+        })
+      });
+      if(res.status === 409){
+        alert('That username is already taken.');
+        return;
+      }
+      if(!res.ok) throw new Error('save_failed');
+      e.target.reset();
     }
-    if(!res.ok) throw new Error('save_failed');
-    e.target.reset();
     users = await loadUsers();
     renderUsersTable();
   }catch(e){
-    alert('Could not create that login — check your connection.');
+    alert('Could not save that login — check your connection.');
   }
 });
+
+function editUser(id){
+  const u = users.find(x=>x.id===id);
+  if(!u) return;
+  editingUserId = id;
+  document.getElementById('u_username').value = u.username || '';
+  document.getElementById('u_username').disabled = true;
+  document.getElementById('u_name').value = u.name || '';
+  document.getElementById('u_password').value = '';
+  document.getElementById('u_password').required = false;
+  document.getElementById('u_passwordLabel').textContent = 'New password (leave blank to keep unchanged)';
+  document.getElementById('u_role').value = u.role || 'staff';
+  document.getElementById('userSubmitBtn').textContent = 'Save changes';
+  document.getElementById('userCancelBtn').style.display = '';
+  document.getElementById('u_username').scrollIntoView({behavior:'smooth', block:'center'});
+}
+window.editUser = editUser;
+
+function cancelUserEdit(){
+  editingUserId = null;
+  document.getElementById('userForm').reset();
+  document.getElementById('u_username').disabled = false;
+  document.getElementById('u_password').required = true;
+  document.getElementById('u_passwordLabel').textContent = 'Password';
+  document.getElementById('userSubmitBtn').textContent = 'Create login';
+  document.getElementById('userCancelBtn').style.display = 'none';
+}
+document.getElementById('userCancelBtn').addEventListener('click', cancelUserEdit);
 
 async function loadAll(){
   settings.backendUrl = getBackendUrl();
@@ -850,6 +917,8 @@ document.getElementById('orgSettingsForm').addEventListener('submit', async (e)=
 });
 
 // ---------- Class form ----------
+let editingClassId = null;
+
 document.getElementById('classForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   if(!requireBackend()) return;
@@ -860,56 +929,157 @@ document.getElementById('classForm').addEventListener('submit', async (e)=>{
       if(t) schedule[cb.dataset.day] = t;
     }
   });
-  const item = await apiAdd('classes', {
+  const payload = {
     name: document.getElementById('c_name').value.trim(),
     subject: document.getElementById('c_subject').value.trim(),
     teacherId: document.getElementById('c_teacher').value,
     schedule
-  });
-  classes.push(item);
-  e.target.reset();
-  initScheduleDaysInput();
+  };
+  if(editingClassId){
+    const updated = await apiUpdate('classes', editingClassId, payload);
+    const idx = classes.findIndex(c=>c.id===editingClassId);
+    if(idx>-1) classes[idx] = updated;
+    cancelClassEdit();
+  }else{
+    const item = await apiAdd('classes', payload);
+    classes.push(item);
+    e.target.reset();
+    initScheduleDaysInput();
+  }
   populateClassSelects();
   renderClassesTable();
 });
 
+function editClass(id){
+  const c = classes.find(x=>x.id===id);
+  if(!c) return;
+  editingClassId = id;
+  document.getElementById('c_name').value = c.name || '';
+  document.getElementById('c_subject').value = c.subject || '';
+  document.getElementById('c_teacher').value = c.teacherId || '';
+  document.querySelectorAll('.dayCheck').forEach(cb=>{
+    const t = document.querySelector(`.dayTime[data-day="${cb.dataset.day}"]`);
+    const scheduled = c.schedule && c.schedule[cb.dataset.day];
+    cb.checked = !!scheduled;
+    t.disabled = !scheduled;
+    t.value = scheduled || '';
+  });
+  document.getElementById('classSubmitBtn').textContent = 'Save changes';
+  document.getElementById('classCancelBtn').style.display = '';
+  document.getElementById('c_name').scrollIntoView({behavior:'smooth', block:'center'});
+}
+window.editClass = editClass;
+
+function cancelClassEdit(){
+  editingClassId = null;
+  document.getElementById('classForm').reset();
+  initScheduleDaysInput();
+  document.getElementById('classSubmitBtn').textContent = 'Save class';
+  document.getElementById('classCancelBtn').style.display = 'none';
+}
+document.getElementById('classCancelBtn').addEventListener('click', cancelClassEdit);
+
 // ---------- Teacher form ----------
+let editingTeacherId = null;
+
 document.getElementById('teacherForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   if(!requireBackend()) return;
-  const item = await apiAdd('teachers', {
+  const payload = {
     name: document.getElementById('t_name').value.trim(),
     phone: document.getElementById('t_phone').value.trim()
-  });
-  teachers.push(item);
-  e.target.reset();
+  };
+  if(editingTeacherId){
+    const updated = await apiUpdate('teachers', editingTeacherId, payload);
+    const idx = teachers.findIndex(t=>t.id===editingTeacherId);
+    if(idx>-1) teachers[idx] = updated;
+    cancelTeacherEdit();
+  }else{
+    const item = await apiAdd('teachers', payload);
+    teachers.push(item);
+    e.target.reset();
+  }
   populateTeacherSelect();
   renderTeachersTable();
 });
 
+function editTeacher(id){
+  const t = teachers.find(x=>x.id===id);
+  if(!t) return;
+  editingTeacherId = id;
+  document.getElementById('t_name').value = t.name || '';
+  document.getElementById('t_phone').value = t.phone || '';
+  document.getElementById('teacherSubmitBtn').textContent = 'Save changes';
+  document.getElementById('teacherCancelBtn').style.display = '';
+  document.getElementById('t_name').scrollIntoView({behavior:'smooth', block:'center'});
+}
+window.editTeacher = editTeacher;
+
+function cancelTeacherEdit(){
+  editingTeacherId = null;
+  document.getElementById('teacherForm').reset();
+  document.getElementById('teacherSubmitBtn').textContent = 'Save teacher';
+  document.getElementById('teacherCancelBtn').style.display = 'none';
+}
+document.getElementById('teacherCancelBtn').addEventListener('click', cancelTeacherEdit);
+
 // ---------- Admission form ----------
+let editingAdmissionId = null;
+
 document.getElementById('admissionForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   if(!requireBackend()) return;
-  const item = await apiAdd('admissions', {
+  const payload = {
     name: document.getElementById('a_name').value.trim(),
     classId: document.getElementById('a_class').value,
     date: document.getElementById('a_date').value
-  });
-  admissions.push(item);
-  e.target.reset();
-  document.getElementById('a_date').valueAsDate = new Date();
+  };
+  if(editingAdmissionId){
+    const updated = await apiUpdate('admissions', editingAdmissionId, payload);
+    const idx = admissions.findIndex(a=>a.id===editingAdmissionId);
+    if(idx>-1) admissions[idx] = updated;
+    cancelAdmissionEdit();
+  }else{
+    const item = await apiAdd('admissions', payload);
+    admissions.push(item);
+    e.target.reset();
+    document.getElementById('a_date').valueAsDate = new Date();
+  }
   renderAdmissionsTable();
 });
 
+function editAdmission(id){
+  const a = admissions.find(x=>x.id===id);
+  if(!a) return;
+  editingAdmissionId = id;
+  document.getElementById('a_name').value = a.name || '';
+  document.getElementById('a_class').value = a.classId || '';
+  document.getElementById('a_date').value = a.date || '';
+  document.getElementById('admissionSubmitBtn').textContent = 'Save changes';
+  document.getElementById('admissionCancelBtn').style.display = '';
+  document.getElementById('a_name').scrollIntoView({behavior:'smooth', block:'center'});
+}
+window.editAdmission = editAdmission;
+
+function cancelAdmissionEdit(){
+  editingAdmissionId = null;
+  document.getElementById('admissionForm').reset();
+  document.getElementById('a_date').valueAsDate = new Date();
+  document.getElementById('admissionSubmitBtn').textContent = 'Save admission';
+  document.getElementById('admissionCancelBtn').style.display = 'none';
+}
+document.getElementById('admissionCancelBtn').addEventListener('click', cancelAdmissionEdit);
+
 // ---------- Session form ----------
+let editingSessionId = null;
+
 document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   if(!requireBackend()) return;
   const cls = classes.find(c=>c.id === document.getElementById('s_class').value);
   const dateVal = document.getElementById('s_date').value;
 
-  const item = await apiAdd('sessions', {
+  const payload = {
     classId: cls ? cls.id : null,
     date: dateVal,
     expectedStart: currentExpected.value || null,
@@ -921,14 +1091,58 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
     online: parseInt(document.getElementById('s_online').value)||0,
     absent: parseInt(document.getElementById('s_absent').value)||0,
     notes: document.getElementById('s_notes').value.trim()
-  });
-  sessions.push(item);
-  e.target.reset();
-  document.getElementById('s_date').valueAsDate = new Date();
-  document.getElementById('s_expected').value='';
-  currentExpected = { value: null, source: null, finish: null };
+  };
+
+  if(editingSessionId){
+    // Editing does NOT re-send the SMS — only a brand new session does.
+    const updated = await apiUpdate('sessions', editingSessionId, payload);
+    const idx = sessions.findIndex(s=>s.id===editingSessionId);
+    if(idx>-1) sessions[idx] = updated;
+    cancelSessionEdit();
+  }else{
+    const item = await apiAdd('sessions', payload);
+    sessions.push(item);
+    e.target.reset();
+    document.getElementById('s_date').valueAsDate = new Date();
+    document.getElementById('s_expected').value='';
+    currentExpected = { value: null, source: null, finish: null };
+  }
   renderSessionsTable();
 });
+
+function editSession(id){
+  const s = sessions.find(x=>x.id===id);
+  if(!s) return;
+  editingSessionId = id;
+  document.getElementById('s_date').value = s.date;
+  document.getElementById('s_class').value = s.classId || '';
+  // Preserve the ORIGINAL expected time this session was logged against,
+  // rather than re-fetching from the calendar — changing the date/class
+  // fields yourself will still refresh it live if you need to.
+  currentExpected = { value: s.expectedStart || null, source: s.expectedSource || null, finish: s.expectedFinish || null };
+  document.getElementById('s_expected').value = s.expectedStart ? `${s.expectedStart}  (as originally recorded)` : 'Not scheduled this day';
+  document.getElementById('s_actualStart').value = s.actualStart || '';
+  document.getElementById('s_actualFinish').value = s.actualFinish || '';
+  document.getElementById('s_physical').value = s.physical ?? 0;
+  document.getElementById('s_online').value = s.online ?? 0;
+  document.getElementById('s_absent').value = s.absent ?? 0;
+  document.getElementById('s_notes').value = s.notes || '';
+  document.getElementById('sessionSubmitBtn').textContent = 'Save changes';
+  document.getElementById('sessionCancelBtn').style.display = '';
+  document.getElementById('s_date').scrollIntoView({behavior:'smooth', block:'center'});
+}
+window.editSession = editSession;
+
+function cancelSessionEdit(){
+  editingSessionId = null;
+  document.getElementById('sessionForm').reset();
+  document.getElementById('s_date').valueAsDate = new Date();
+  document.getElementById('s_expected').value = '';
+  currentExpected = { value: null, source: null, finish: null };
+  document.getElementById('sessionSubmitBtn').textContent = 'Save session';
+  document.getElementById('sessionCancelBtn').style.display = 'none';
+}
+document.getElementById('sessionCancelBtn').addEventListener('click', cancelSessionEdit);
 
 // ---------- Delete helpers ----------
 async function deleteItem(arrName, id){
@@ -970,7 +1184,7 @@ function renderTeachersTable(){
         <td class="txt">${t.phone || '—'}</td>
         <td class="txt">${t.phone ? '<span style="color:var(--brass-dark);">On</span>' : '<span style="color:var(--ink-soft);">Off</span>'}</td>
         <td>${count}</td>
-        <td><button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button></td>
+        <td><button class="ghost" onclick="editTeacher('${t.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button></td>
       </tr>`;
     }).join('')}
   </tbody></table>`;
@@ -982,7 +1196,7 @@ function renderClassesTable(){
   wrap.innerHTML = `<table><thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Schedule</th><th></th></tr></thead><tbody>
     ${classes.map(c=>{
       const sched = DAYS.filter(([k])=>c.schedule && c.schedule[k]).map(([k,l])=>`${l} ${c.schedule[k]}`).join(', ') || 'Not set';
-      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td class="txt">${sched}</td><td><button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button></td></tr>`;
+      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td class="txt">${sched}</td><td><button class="ghost" onclick="editClass('${c.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button></td></tr>`;
     }).join('')}
   </tbody></table>`;
 }
@@ -992,7 +1206,7 @@ function renderAdmissionsTable(){
   if(!admissions.length){ wrap.innerHTML = '<div class="empty">No admissions logged yet.</div>'; return; }
   const sorted = [...admissions].sort((a,b)=> b.date.localeCompare(a.date));
   wrap.innerHTML = `<table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th></th></tr></thead><tbody>
-    ${sorted.map(a=>`<tr><td>${a.date}</td><td class="txt">${a.name}</td><td class="txt">${className(a.classId)}</td><td><button class="ghost danger" onclick="deleteItem('admissions','${a.id}')">Remove</button></td></tr>`).join('')}
+    ${sorted.map(a=>`<tr><td>${a.date}</td><td class="txt">${a.name}</td><td class="txt">${className(a.classId)}</td><td><button class="ghost" onclick="editAdmission('${a.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('admissions','${a.id}')">Remove</button></td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -1011,7 +1225,7 @@ function renderSessionsTable(){
       <td>${s.physical}</td>
       <td>${s.online}</td>
       <td>${s.absent}</td>
-      <td><button class="ghost danger" onclick="deleteItem('sessions','${s.id}')">Remove</button></td>
+      <td><button class="ghost" onclick="editSession('${s.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('sessions','${s.id}')">Remove</button></td>
     </tr>`).join('')}
   </tbody></table>`;
 }

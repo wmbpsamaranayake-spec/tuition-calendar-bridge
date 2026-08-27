@@ -1498,8 +1498,8 @@ function renderTeacherPerformanceTable(){
 let classAttendanceChart, teacherPunctualityChart;
 
 // ---------- Monthly Hours Tracker ----------
-let hoursCharts = new Map();
-
+// Rings are drawn as plain SVG (no external library) so they render
+// reliably even if a CDN script gets blocked by a network or browser.
 function sessionDurationHours(s){
   if(!s.actualStart || !s.actualFinish) return 0;
   const [sh,sm] = s.actualStart.split(':').map(Number);
@@ -1531,9 +1531,20 @@ function expectedPacePercent(yearMonth){
   return Math.min(100, (new Date().getDate() / daysInMonth(yearMonth)) * 100);
 }
 
-function destroyHoursCharts(){
-  hoursCharts.forEach(ch=>ch.destroy());
-  hoursCharts.clear();
+// Builds one SVG progress ring. pct is 0-100 (already capped by caller).
+function progressRingSvg(pct, color, label){
+  const r = 45, cx = 52, cy = 52;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - pct/100);
+  return `
+    <svg width="104" height="104" viewBox="0 0 104 104">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(231,234,242,0.14)" stroke-width="10"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="10"
+        stroke-dasharray="${circumference.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}"
+        stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})"/>
+      <text x="${cx}" y="${cy+1}" text-anchor="middle" dominant-baseline="middle"
+        fill="${color}" font-size="17" font-family="SFMono-Regular, Consolas, monospace" font-weight="600">${label}</text>
+    </svg>`;
 }
 
 function renderHoursTracker(){
@@ -1541,7 +1552,6 @@ function renderHoursTracker(){
   if(!picker.value) picker.value = new Date().toISOString().slice(0,7);
   const yearMonth = picker.value;
   const wrap = document.getElementById('hoursTrackerWrap');
-  destroyHoursCharts();
 
   if(!classes.length){ wrap.innerHTML = '<div class="empty">Add some classes first, with a planned monthly hours target, to see progress here.</div>'; return; }
 
@@ -1567,23 +1577,26 @@ function renderHoursTracker(){
         const planned = c.plannedMonthlyHours || 0;
         const completed = computeClassHoursForMonth(c.id, yearMonth);
         const pct = planned>0 ? (completed/planned)*100 : 0;
+        const ringPct = Math.max(0, Math.min(100, pct));
 
-        let status, statusColor;
+        let status, color;
         if(planned===0){
-          status = 'No target set'; statusColor = 'var(--ink-soft)';
+          status = 'No target set'; color = '#9AA6C3';
         }else if(completed >= planned){
-          status = 'Target met'; statusColor = 'var(--brass-dark)';
+          status = 'Target met'; color = '#C9A227';
         }else if(pct >= expectedPct - PACE_BUFFER){
-          status = 'On track'; statusColor = 'var(--brass-dark)';
+          status = 'On track'; color = '#C9A227';
         }else{
-          status = 'Behind pace'; statusColor = 'var(--stamp)';
+          status = 'Behind pace'; color = '#D6585B';
         }
 
+        const label = planned>0 ? `${Math.round(pct)}%` : '—';
+
         return `<div class="hours-card">
-          <canvas id="hoursDonut-${c.id}" width="104" height="104"></canvas>
+          ${progressRingSvg(ringPct, color, label)}
           <div class="hours-card-name">${c.name}</div>
           <div class="hours-card-figure">${completed.toFixed(1)} / ${planned || '—'} hrs</div>
-          <div class="hours-card-status" style="color:${statusColor};">${status}</div>
+          <div class="hours-card-status" style="color:${color};">${status}</div>
         </div>`;
       }).join('');
 
@@ -1598,40 +1611,6 @@ function renderHoursTracker(){
       <div class="report-body">${gradesHtml}</div>
     </details>`;
   }).join('');
-
-  // Charts are created after the canvases exist in the DOM.
-  if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping hour rings.'); return; }
-  classes.forEach(c=>{
-    const canvas = document.getElementById(`hoursDonut-${c.id}`);
-    if(!canvas) return;
-    const planned = c.plannedMonthlyHours || 0;
-    const completed = computeClassHoursForMonth(c.id, yearMonth);
-    const pct = planned>0 ? (completed/planned)*100 : 0;
-
-    let ringColor = 'rgba(231,234,242,0.25)';
-    if(planned>0){
-      ringColor = completed>=planned ? '#C9A227' : (pct >= expectedPct - PACE_BUFFER ? '#C9A227' : '#D6585B');
-    }
-    const completedCapped = planned>0 ? Math.min(completed, planned) : 0;
-    const remaining = planned>0 ? Math.max(planned-completed, 0) : 1;
-
-    const chart = new Chart(canvas.getContext('2d'), {
-      type:'doughnut',
-      data:{
-        datasets:[{
-          data: planned>0 ? [completedCapped, remaining] : [1],
-          backgroundColor: planned>0 ? [ringColor, 'rgba(231,234,242,0.12)'] : ['rgba(231,234,242,0.12)'],
-          borderWidth:0
-        }]
-      },
-      options:{
-        responsive:false,
-        cutout:'70%',
-        plugins:{ legend:{display:false}, tooltip:{enabled:false} }
-      }
-    });
-    hoursCharts.set(c.id, chart);
-  });
 }
 
 document.getElementById('hoursMonthPicker').addEventListener('change', renderHoursTracker);

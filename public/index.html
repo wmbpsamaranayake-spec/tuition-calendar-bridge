@@ -186,7 +186,13 @@
         <div class="sub">Eminent Edification · Tuition Operations Ledger</div>
       </div>
     </div>
-    <div class="today" id="todayLabel"></div>
+    <div style="text-align:right;">
+      <div class="today" id="todayLabel"></div>
+      <div style="margin-top:4px; font-size:12px; color:var(--ink-soft);">
+        <span id="currentUserLabel"></span>
+        <button class="ghost" id="logoutBtn" style="margin-left:8px; padding:3px 9px; font-size:11px;">Log out</button>
+      </div>
+    </div>
   </header>
 
   <nav class="tabs" id="tabs">
@@ -197,6 +203,7 @@
     <button data-view="teachers">Teachers</button>
     <button data-view="reports">Reports</button>
     <button data-view="settings">Settings</button>
+    <button data-view="users" id="usersTabBtn" style="display:none;">Users</button>
   </nav>
   <div class="tabline"></div>
 
@@ -424,6 +431,42 @@
     </div>
   </section>
 
+  <!-- USERS (admin only) -->
+  <section class="view" id="view-users">
+    <div class="card">
+      <h3>Add a Login</h3>
+      <div class="note">Anyone added here can log into this dashboard. "Admin" can manage users, the Operations Manager number, and everything else. "Staff" can log sessions and view reports, but can't manage users or organization-wide settings.</div>
+      <form class="entry" id="userForm">
+        <div>
+          <label>Username</label>
+          <input type="text" id="u_username" autocomplete="off" required>
+        </div>
+        <div>
+          <label>Display name</label>
+          <input type="text" id="u_name" autocomplete="off">
+        </div>
+        <div>
+          <label>Password</label>
+          <input type="password" id="u_password" autocomplete="new-password" required>
+        </div>
+        <div>
+          <label>Role</label>
+          <select id="u_role">
+            <option value="staff">Staff</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="full">
+          <button type="submit" class="primary">Create login</button>
+        </div>
+      </form>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3>All Logins</h3>
+      <div id="usersTableWrap"></div>
+    </div>
+  </section>
+
 </div>
 
 <script>
@@ -434,7 +477,9 @@ let teachers = [];
 let classes = [];
 let sessions = [];
 let admissions = [];
+let users = [];
 let settings = { backendUrl: '' };
+let currentUser = null; // { username, name, role }
 let attendanceChart, admissionsChart;
 let currentExpected = { value: null, source: null, finish: null }; // source: 'calendar' | 'manual'
 
@@ -464,11 +509,20 @@ function apiBase(){
   return getBackendUrl().replace(/\/$/,'');
 }
 
+function handleAuthFailure(status){
+  if(status === 401){
+    window.location.href = '/login';
+    return true;
+  }
+  return false;
+}
+
 async function apiGet(collection){
   const base = apiBase();
   if(!base) return [];
   try{
     const res = await fetch(`${base}/api/${collection}`);
+    if(handleAuthFailure(res.status)) return [];
     if(!res.ok) return [];
     return await res.json();
   }catch(e){
@@ -484,6 +538,7 @@ async function apiAdd(collection, item){
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify(item)
   });
+  if(handleAuthFailure(res.status)) throw new Error('not_authenticated');
   if(!res.ok) throw new Error('save_failed');
   return await res.json();
 }
@@ -491,8 +546,111 @@ async function apiDelete(collection, id){
   const base = apiBase();
   if(!base) throw new Error('no_backend');
   const res = await fetch(`${base}/api/${collection}/${id}`, { method:'DELETE' });
+  if(handleAuthFailure(res.status)) throw new Error('not_authenticated');
   if(!res.ok) throw new Error('delete_failed');
 }
+
+// ---------- Current user / auth ----------
+async function loadCurrentUser(){
+  const base = apiBase();
+  if(!base) return;
+  try{
+    const res = await fetch(`${base}/api/me`);
+    if(res.status === 401){
+      window.location.href = '/login';
+      return;
+    }
+    if(res.ok){
+      currentUser = await res.json();
+      document.getElementById('currentUserLabel').textContent = `${currentUser.name} · ${currentUser.role}`;
+      if(currentUser.role === 'admin'){
+        document.getElementById('usersTabBtn').style.display = '';
+      }else{
+        // Only admins can change org-wide settings like the manager's number.
+        const orgForm = document.getElementById('orgSettingsForm');
+        orgForm.querySelector('input').disabled = true;
+        orgForm.querySelector('button[type="submit"]').disabled = true;
+        orgForm.insertAdjacentHTML('beforeend', '<div class="full" style="font-size:12px; color:var(--ink-soft);">Only admins can change this.</div>');
+      }
+    }
+  }catch(e){
+    console.warn('Could not load current user:', e);
+  }
+}
+
+document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  try{ await fetch(`${apiBase()}/api/logout`, { method:'POST' }); }catch(e){}
+  window.location.href = '/login';
+});
+
+// ---------- Users (admin only) ----------
+async function loadUsers(){
+  const base = apiBase();
+  if(!base || !currentUser || currentUser.role !== 'admin') return [];
+  try{
+    const res = await fetch(`${base}/api/users`);
+    if(!res.ok) return [];
+    return await res.json();
+  }catch(e){ return []; }
+}
+
+function renderUsersTable(){
+  const wrap = document.getElementById('usersTableWrap');
+  if(!users.length){ wrap.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+  wrap.innerHTML = `<table><thead><tr><th>Username</th><th>Name</th><th>Role</th><th></th></tr></thead><tbody>
+    ${users.map(u=>`<tr>
+      <td class="txt">${u.username}</td>
+      <td class="txt">${u.name || ''}</td>
+      <td class="txt">${u.role}</td>
+      <td><button class="ghost danger" onclick="deleteUser('${u.id}')">Remove</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+
+async function deleteUser(id){
+  if(!confirm('Remove this login? They will no longer be able to sign in.')) return;
+  try{
+    const res = await fetch(`${apiBase()}/api/users/${id}`, { method:'DELETE' });
+    if(res.status === 400){
+      alert("Can't remove the last remaining admin account.");
+      return;
+    }
+    if(!res.ok) throw new Error('delete_failed');
+    users = await loadUsers();
+    renderUsersTable();
+  }catch(e){
+    alert('Could not remove that login — check your connection.');
+  }
+}
+window.deleteUser = deleteUser;
+
+document.getElementById('userForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  if(!requireBackend()) return;
+  const status = document.getElementById('u_username');
+  try{
+    const res = await fetch(`${apiBase()}/api/users`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        username: document.getElementById('u_username').value.trim(),
+        password: document.getElementById('u_password').value,
+        name: document.getElementById('u_name').value.trim(),
+        role: document.getElementById('u_role').value
+      })
+    });
+    if(res.status === 409){
+      alert('That username is already taken.');
+      return;
+    }
+    if(!res.ok) throw new Error('save_failed');
+    e.target.reset();
+    users = await loadUsers();
+    renderUsersTable();
+  }catch(e){
+    alert('Could not create that login — check your connection.');
+  }
+});
 
 async function loadAll(){
   settings.backendUrl = getBackendUrl();
@@ -517,6 +675,7 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
   document.getElementById('view-'+btn.dataset.view).classList.add('active');
   if(btn.dataset.view === 'dashboard') renderDashboard();
   if(btn.dataset.view === 'reports') renderReports();
+  if(btn.dataset.view === 'users') renderUsersTable();
 });
 
 // ---------- Init forms ----------
@@ -1224,7 +1383,11 @@ function buildDataSummary(){
       }
     });
   }else{
+    await loadCurrentUser();
     await loadOrgSettings();
+    if(currentUser && currentUser.role === 'admin'){
+      users = await loadUsers();
+    }
   }
   renderAll();
 })();

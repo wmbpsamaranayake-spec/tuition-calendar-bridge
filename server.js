@@ -102,46 +102,40 @@ async function sendTextitSms(to, text) {
   return { status: res.status, body: responseText };
 }
 
-async function maybeSendSessionSms(session) {
-  if (!process.env.TEXTITBIZ_API_KEY) return;
-  try {
-    const cls = await db.collection('classes').findOne({ id: session.classId });
-    if (!cls) return;
-    const teacher = await db.collection('teachers').findOne({ id: cls.teacherId });
-    const orgSettings = await db.collection('settings').findOne({ _id: 'org' });
+// Builds the SMS text and recipient list for a session, without sending
+// anything. Used both for the preview (shown after saving) and as the
+// first step before an actual send.
+async function buildSessionSmsPayload(session) {
+  const cls = await db.collection('classes').findOne({ id: session.classId });
+  if (!cls) return null;
+  const teacher = await db.collection('teachers').findOne({ id: cls.teacherId });
+  const orgSettings = await db.collection('settings').findOne({ _id: 'org' });
 
-    const lateMinutes = minutesBetween(session.expectedStart, session.actualStart);
-    const overMinutes = minutesBetween(session.expectedFinish, session.actualFinish);
+  const lateMinutes = minutesBetween(session.expectedStart, session.actualStart);
+  const overMinutes = minutesBetween(session.expectedFinish, session.actualFinish);
 
-    let warning = '';
-    if (lateMinutes !== null && lateMinutes > WARNING_THRESHOLD_MINUTES) {
-      warning += ` ⚠️ Started ${lateMinutes} min late.`;
-    }
-    if (overMinutes !== null && overMinutes > WARNING_THRESHOLD_MINUTES) {
-      warning += ` ⚠️ Ran ${overMinutes} min over the scheduled end time.`;
-    }
-
-    const teacherLabel = teacher ? teacher.name : 'Teacher';
-    const text = `Hi ${teacherLabel}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.${warning}`;
-
-    // Send to the teacher (if they have a number on file) and, in
-    // addition, to the Operations Manager (if one is configured) — both
-    // get the exact same message.
-    const recipients = [];
-    if (teacher && teacher.phone) {
-      recipients.push({ label: teacher.name, to: toLocalPhoneFormat(teacher.phone) });
-    }
-    if (orgSettings && orgSettings.managerPhone) {
-      recipients.push({ label: 'Operations Manager', to: toLocalPhoneFormat(orgSettings.managerPhone) });
-    }
-
-    for (const recipient of recipients) {
-      const result = await sendTextitSms(recipient.to, text);
-      console.log(`SMS to ${recipient.label} (${recipient.to}) — status ${result.status}:`, result.body);
-    }
-  } catch (e) {
-    console.error('Failed to send session SMS:', e.message);
+  let warning = '';
+  if (lateMinutes !== null && lateMinutes > WARNING_THRESHOLD_MINUTES) {
+    warning += ` ⚠️ Started ${lateMinutes} min late.`;
   }
+  if (overMinutes !== null && overMinutes > WARNING_THRESHOLD_MINUTES) {
+    warning += ` ⚠️ Ran ${overMinutes} min over the scheduled end time.`;
+  }
+
+  const teacherLabel = teacher ? teacher.name : 'Teacher';
+  const text = `Hi ${teacherLabel}, your session for "${cls.name}" on ${session.date} was logged: started ${session.actualStart}, ended ${session.actualFinish}. Physical: ${session.physical}, Online: ${session.online}, Absent: ${session.absent}.${warning}`;
+
+  // The teacher (if they have a number on file) and, in addition, the
+  // Operations Manager (if one is configured) — both get the same message.
+  const recipients = [];
+  if (teacher && teacher.phone) {
+    recipients.push({ label: teacher.name, to: toLocalPhoneFormat(teacher.phone) });
+  }
+  if (orgSettings && orgSettings.managerPhone) {
+    recipients.push({ label: 'Operations Manager', to: toLocalPhoneFormat(orgSettings.managerPhone) });
+  }
+
+  return { text, recipients };
 }
 
 function newId() {
@@ -312,6 +306,44 @@ app.put('/api/users/:id', requireAuth('admin'), async (req, res) => {
   }
 });
 
+// Shows what the SMS would say and who it would go to, without sending
+// anything — used to populate the confirmation popup after saving.
+app.get('/api/sessions/:id/sms-preview', requireAuth(), async (req, res) => {
+  try {
+    const session = await db.collection('sessions').findOne({ id: req.params.id });
+    if (!session) return res.status(404).json({ error: 'not_found' });
+    const payload = await buildSessionSmsPayload(session);
+    if (!payload) return res.status(404).json({ error: 'class_not_found' });
+    res.json({ ...payload, smsConfigured: !!process.env.TEXTITBIZ_API_KEY });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'preview_failed' });
+  }
+});
+
+// Actually sends the SMS — only fires when someone deliberately clicks
+// "Send SMS" in the popup (or later, from the sessions table).
+app.post('/api/sessions/:id/send-sms', requireAuth(), async (req, res) => {
+  try {
+    if (!process.env.TEXTITBIZ_API_KEY) return res.status(400).json({ error: 'sms_not_configured' });
+    const session = await db.collection('sessions').findOne({ id: req.params.id });
+    if (!session) return res.status(404).json({ error: 'not_found' });
+    const payload = await buildSessionSmsPayload(session);
+    if (!payload || !payload.recipients.length) return res.status(400).json({ error: 'no_recipients' });
+
+    const results = [];
+    for (const recipient of payload.recipients) {
+      const result = await sendTextitSms(recipient.to, payload.text);
+      results.push({ label: recipient.label, to: recipient.to, status: result.status, body: result.body });
+      console.log(`SMS to ${recipient.label} (${recipient.to}) — status ${result.status}:`, result.body);
+    }
+    res.json({ ok: true, results });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'send_failed' });
+  }
+});
+
 app.get('/api/schedule', requireAuth(), async (req, res) => {
   try {
     if (!isConnected) return res.status(401).json({ error: 'not_connected' });
@@ -376,10 +408,10 @@ COLLECTIONS.forEach(name => {
       const item = { ...req.body, id: req.body.id || newId() };
       await db.collection(name).insertOne({ ...item });
       res.json(item);
-      if (name === 'sessions') {
-        // Fire-and-forget: don't make the person wait on the SMS provider.
-        maybeSendSessionSms(item);
-      }
+      // Note: saving a session no longer sends SMS automatically — that's
+      // now a deliberate separate action (see /api/sessions/:id/sms-preview
+      // and /api/sessions/:id/send-sms below), so a staff member saving a
+      // record can't accidentally text a teacher.
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'save_failed' });

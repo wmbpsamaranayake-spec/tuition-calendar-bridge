@@ -2,15 +2,58 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const { google } = require('googleapis');
 
 const app = express();
+app.set('trust proxy', 1); // Render sits behind a proxy — needed for secure cookies to work
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
-// Serve the dashboard itself at /app — your team visits this URL.
-app.use('/app', express.static(path.join(__dirname, 'public')));
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'change-me-in-render-env-vars',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI,
+    dbName: process.env.DB_NAME || 'tuition_center',
+    collectionName: 'sessions_auth'
+  }),
+  cookie: {
+    secure: true,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  }
+}));
+
+// Blocks a request unless logged in. Pass a role ('admin') to also
+// require that specific role. Browser page loads get redirected to the
+// login page; API calls just get a 401/403 JSON response.
+function requireAuth(role) {
+  return (req, res, next) => {
+    if (!req.session || !req.session.userId) {
+      if (req.accepts('html')) return res.redirect('/login');
+      return res.status(401).json({ error: 'not_authenticated' });
+    }
+    if (role && req.session.role !== role) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    next();
+  };
+}
+
+// Login page itself must NOT be behind auth (or nobody could ever log in).
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Serve the dashboard itself at /app — your team visits this URL. This is
+// the main thing being protected: no session, no dashboard.
+app.use('/app', requireAuth(), express.static(path.join(__dirname, 'public')));
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -150,7 +193,93 @@ app.get('/oauth2callback', async (req, res) => {
 });
 
 // ---------- Calendar schedule lookup ----------
-app.get('/api/schedule', async (req, res) => {
+// ---------- Login / logout / current-user ----------
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'missing_fields' });
+
+    const user = await db.collection('users').findOne({ username: username.trim().toLowerCase() });
+    if (!user) return res.status(401).json({ error: 'invalid_credentials' });
+
+    const match = await bcrypt.compare(password, user.passwordHash);
+    if (!match) return res.status(401).json({ error: 'invalid_credentials' });
+
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    req.session.role = user.role;
+    req.session.name = user.name || user.username;
+    res.json({ ok: true, username: user.username, name: req.session.name, role: user.role });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'login_failed' });
+  }
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/me', requireAuth(), (req, res) => {
+  res.json({ username: req.session.username, name: req.session.name, role: req.session.role });
+});
+
+// ---------- User management (admin only) ----------
+app.get('/api/users', requireAuth('admin'), async (req, res) => {
+  try {
+    const users = await db.collection('users').find({}).toArray();
+    res.json(users.map(({ _id, passwordHash, ...rest }) => rest));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'load_failed' });
+  }
+});
+
+app.post('/api/users', requireAuth('admin'), async (req, res) => {
+  try {
+    const { username, password, name, role } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'missing_fields' });
+
+    const cleanUsername = username.trim().toLowerCase();
+    const existing = await db.collection('users').findOne({ username: cleanUsername });
+    if (existing) return res.status(409).json({ error: 'username_taken' });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = {
+      id: newId(),
+      username: cleanUsername,
+      passwordHash,
+      name: name || cleanUsername,
+      role: role === 'admin' ? 'admin' : 'staff'
+    };
+    await db.collection('users').insertOne({ ...user });
+    const { passwordHash: _, ...safeUser } = user;
+    res.json(safeUser);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'save_failed' });
+  }
+});
+
+app.delete('/api/users/:id', requireAuth('admin'), async (req, res) => {
+  try {
+    // Don't let an admin lock themselves (or the last admin) out entirely.
+    const target = await db.collection('users').findOne({ id: req.params.id });
+    if (target && target.role === 'admin') {
+      const adminCount = await db.collection('users').countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'cannot_delete_last_admin' });
+      }
+    }
+    await db.collection('users').deleteOne({ id: req.params.id });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'delete_failed' });
+  }
+});
+
+app.get('/api/schedule', requireAuth(), async (req, res) => {
   try {
     if (!isConnected) return res.status(401).json({ error: 'not_connected' });
     const date = req.query.date;
@@ -186,7 +315,7 @@ app.get('/api/schedule', async (req, res) => {
 const COLLECTIONS = ['teachers', 'classes', 'sessions', 'admissions'];
 
 COLLECTIONS.forEach(name => {
-  app.get(`/api/${name}`, async (req, res) => {
+  app.get(`/api/${name}`, requireAuth(), async (req, res) => {
     try {
       const items = await db.collection(name).find({}).toArray();
       res.json(items.map(({ _id, ...rest }) => rest));
@@ -196,7 +325,7 @@ COLLECTIONS.forEach(name => {
     }
   });
 
-  app.post(`/api/${name}/import`, async (req, res) => {
+  app.post(`/api/${name}/import`, requireAuth(), async (req, res) => {
     try {
       const items = Array.isArray(req.body) ? req.body : [];
       if (items.length) {
@@ -209,7 +338,7 @@ COLLECTIONS.forEach(name => {
     }
   });
 
-  app.post(`/api/${name}`, async (req, res) => {
+  app.post(`/api/${name}`, requireAuth(), async (req, res) => {
     try {
       const item = { ...req.body, id: req.body.id || newId() };
       await db.collection(name).insertOne({ ...item });
@@ -224,7 +353,7 @@ COLLECTIONS.forEach(name => {
     }
   });
 
-  app.delete(`/api/${name}/:id`, async (req, res) => {
+  app.delete(`/api/${name}/:id`, requireAuth(), async (req, res) => {
     try {
       await db.collection(name).deleteOne({ id: req.params.id });
       res.json({ ok: true });
@@ -239,7 +368,7 @@ COLLECTIONS.forEach(name => {
 // ---------- Organization settings (e.g. Operations Manager phone number) ----------
 // Stored as a single shared document — one setting set for the whole
 // organization, not per-device like the backend URL.
-app.get('/api/settings', async (req, res) => {
+app.get('/api/settings', requireAuth(), async (req, res) => {
   try {
     const doc = await db.collection('settings').findOne({ _id: 'org' });
     const { _id, ...rest } = doc || {};
@@ -250,7 +379,7 @@ app.get('/api/settings', async (req, res) => {
   }
 });
 
-app.post('/api/settings', async (req, res) => {
+app.post('/api/settings', requireAuth('admin'), async (req, res) => {
   try {
     const { _id, ...rest } = req.body || {};
     await db.collection('settings').updateOne({ _id: 'org' }, { $set: rest }, { upsert: true });
@@ -261,7 +390,7 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
-app.post('/api/insights', async (req, res) => {
+app.post('/api/insights', requireAuth(), async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'no_api_key' });
   }
@@ -310,6 +439,26 @@ async function start() {
   if (tokenDoc) {
     oauth2Client.setCredentials(tokenDoc.tokens);
     isConnected = true;
+  }
+
+  // First-run only: create the initial admin account from env vars, so
+  // there's always a way in. Once any user exists, this is skipped —
+  // manage further accounts from the Users tab in the dashboard instead.
+  const userCount = await db.collection('users').countDocuments();
+  if (userCount === 0) {
+    if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD) {
+      const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+      await db.collection('users').insertOne({
+        id: newId(),
+        username: process.env.ADMIN_USERNAME.trim().toLowerCase(),
+        passwordHash,
+        name: 'Admin',
+        role: 'admin'
+      });
+      console.log(`Created initial admin account: ${process.env.ADMIN_USERNAME}`);
+    } else {
+      console.warn('No users exist yet, and ADMIN_USERNAME/ADMIN_PASSWORD are not set — nobody will be able to log in until you set these env vars and redeploy.');
+    }
   }
 
   const PORT = process.env.PORT || 3000;

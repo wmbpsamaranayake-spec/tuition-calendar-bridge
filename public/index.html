@@ -168,6 +168,18 @@
   details.report-month[open] > summary::before{content:'▾  ';}
   table.report-table{margin:6px 0 10px 18px; width:calc(100% - 18px);}
   table.report-table th, table.report-table td{padding:6px 8px; font-size:12px;}
+
+  /* Class/teacher performance tables */
+  table.perf-table td.warn{color:var(--stamp); font-weight:600;}
+  table.perf-table td.good{color:var(--brass-dark);}
+
+  /* Monthly hours tracker */
+  .hours-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:14px; margin:10px 0 6px 18px;}
+  .hours-card{background:var(--card); border:1px solid var(--line); border-radius:4px; padding:12px 8px; text-align:center;}
+  .hours-card canvas{margin:0 auto 8px; display:block;}
+  .hours-card-name{font-size:12px; font-weight:600; line-height:1.3;}
+  .hours-card-figure{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-soft); margin-top:3px;}
+  .hours-card-status{font-size:11px; font-weight:600; margin-top:3px;}
   @media(max-width:820px){
     .grid.kpi{grid-template-columns:repeat(2,1fr);}
     .grid.two{grid-template-columns:1fr;}
@@ -202,6 +214,7 @@
     <button data-view="admissions">Admissions</button>
     <button data-view="teachers">Teachers</button>
     <button data-view="reports">Reports</button>
+    <button data-view="hours">Hours</button>
     <button data-view="settings">Settings</button>
     <button data-view="users" id="usersTabBtn" style="display:none;">Users</button>
   </nav>
@@ -231,6 +244,27 @@
         <h3>New Admissions by Month</h3>
         <canvas id="admissionsChart"></canvas>
       </div>
+    </div>
+
+    <div class="grid two" style="margin-bottom:18px;">
+      <div class="card">
+        <h3>Attendance Rate by Class</h3>
+        <canvas id="classAttendanceChart"></canvas>
+      </div>
+      <div class="card">
+        <h3>Average Punctuality by Teacher</h3>
+        <canvas id="teacherPunctualityChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="toprow"><h3 style="margin:0;">Class-wise Performance</h3><span class="chip">All-time</span></div>
+      <div id="classPerformanceTableWrap"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="toprow"><h3 style="margin:0;">Teacher-wise Performance</h3><span class="chip">All-time</span></div>
+      <div id="teacherPerformanceTableWrap"></div>
     </div>
 
     <div class="card">
@@ -315,6 +349,14 @@
           <label>Teacher</label>
           <select id="c_teacher" required></select>
         </div>
+        <div>
+          <label>Grade</label>
+          <input type="text" id="c_grade" placeholder="e.g. Grade 4, AS, O/L">
+        </div>
+        <div>
+          <label>Planned hours per month</label>
+          <input type="number" id="c_plannedHours" min="0" step="0.5" placeholder="e.g. 8">
+        </div>
         <div class="full">
           <label>Weekly schedule — tick the days this class runs and set its start time</label>
           <div class="schedule-days" id="scheduleDays"></div>
@@ -398,6 +440,21 @@
       </div>
       <div class="note">Click a teacher to see their classes, click a class to see it by month, and click a month to see every logged session in it. "Download Excel" exports every logged session as a flat spreadsheet, one row per session.</div>
       <div id="reportsWrap"></div>
+    </div>
+  </section>
+
+  <!-- HOURS -->
+  <section class="view" id="view-hours">
+    <div class="card">
+      <div class="toprow">
+        <h3 style="margin:0;">Monthly Hours Progress</h3>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="month" id="hoursMonthPicker">
+          <button class="ghost" id="hoursThisMonthBtn">This month</button>
+        </div>
+      </div>
+      <div class="note">Completed hours are calculated from each session's actual start/finish times, compared against the planned monthly hours set per class (see Classes &amp; Schedule). Ring color reflects pace, not just the final total: <b style="color:var(--brass-dark);">gold</b> means on track or target met, <b style="color:var(--stamp);">red</b> means behind where you'd expect to be by this point in the month.</div>
+      <div id="hoursTrackerWrap"></div>
     </div>
   </section>
 
@@ -755,6 +812,7 @@ document.getElementById('tabs').addEventListener('click', (e)=>{
   document.getElementById('view-'+btn.dataset.view).classList.add('active');
   if(btn.dataset.view === 'dashboard') renderDashboard();
   if(btn.dataset.view === 'reports') renderReports();
+  if(btn.dataset.view === 'hours') renderHoursTracker();
   if(btn.dataset.view === 'users') renderUsersTable();
 });
 
@@ -946,6 +1004,8 @@ document.getElementById('classForm').addEventListener('submit', async (e)=>{
     name: document.getElementById('c_name').value.trim(),
     subject: document.getElementById('c_subject').value.trim(),
     teacherId: document.getElementById('c_teacher').value,
+    grade: document.getElementById('c_grade').value.trim(),
+    plannedMonthlyHours: parseFloat(document.getElementById('c_plannedHours').value) || 0,
     schedule
   };
   if(editingClassId){
@@ -970,6 +1030,8 @@ function editClass(id){
   document.getElementById('c_name').value = c.name || '';
   document.getElementById('c_subject').value = c.subject || '';
   document.getElementById('c_teacher').value = c.teacherId || '';
+  document.getElementById('c_grade').value = c.grade || '';
+  document.getElementById('c_plannedHours').value = c.plannedMonthlyHours || '';
   document.querySelectorAll('.dayCheck').forEach(cb=>{
     const t = document.querySelector(`.dayTime[data-day="${cb.dataset.day}"]`);
     const scheduled = c.schedule && c.schedule[cb.dataset.day];
@@ -1273,10 +1335,10 @@ function renderClassesTable(){
   const wrap = document.getElementById('classesTableWrap');
   if(!classes.length){ wrap.innerHTML = '<div class="empty">No classes added yet.</div>'; return; }
   const canDelete = currentUser && currentUser.role === 'admin';
-  wrap.innerHTML = `<table><thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Schedule</th><th></th></tr></thead><tbody>
+  wrap.innerHTML = `<table><thead><tr><th>Class</th><th>Grade</th><th>Subject</th><th>Teacher</th><th>Planned Hrs/mo</th><th>Schedule</th><th></th></tr></thead><tbody>
     ${classes.map(c=>{
       const sched = DAYS.filter(([k])=>c.schedule && c.schedule[k]).map(([k,l])=>`${l} ${c.schedule[k]}`).join(', ') || 'Not set';
-      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td class="txt">${sched}</td><td><button class="ghost" onclick="editClass('${c.id}')" style="margin-right:6px;">Edit</button>${canDelete ? `<button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button>` : ''}</td></tr>`;
+      return `<tr><td class="txt">${c.name}</td><td class="txt">${c.grade || '—'}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td>${c.plannedMonthlyHours || '—'}</td><td class="txt">${sched}</td><td><button class="ghost" onclick="editClass('${c.id}')" style="margin-right:6px;">Edit</button>${canDelete ? `<button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button>` : ''}</td></tr>`;
     }).join('')}
   </tbody></table>`;
 }
@@ -1336,6 +1398,303 @@ function computePunctualityByTeacher(withinDays=7){
     avg: diffs.reduce((a,b)=>a+b,0)/diffs.length,
     count: diffs.length
   })).sort((a,b)=>b.avg-a.avg);
+}
+
+// All-time (not windowed) per-class stats: attendance rate and punctuality.
+function computeClassStats(){
+  return classes.map(cls=>{
+    const rows = sessions.filter(s=>s.classId===cls.id);
+    const physical = rows.reduce((s,r)=>s+r.physical,0);
+    const online = rows.reduce((s,r)=>s+r.online,0);
+    const absent = rows.reduce((s,r)=>s+r.absent,0);
+    const totalMarked = physical+online+absent;
+    const diffs = rows.map(r=>minutesDiff(r.expectedStart, r.actualStart)).filter(d=>d!==null);
+    return {
+      classId: cls.id,
+      name: cls.name,
+      teacher: teacherName(cls.teacherId),
+      sessionCount: rows.length,
+      physical, online, absent,
+      attendanceRate: totalMarked ? (physical+online)/totalMarked*100 : null,
+      avgPunctuality: diffs.length ? diffs.reduce((a,b)=>a+b,0)/diffs.length : null
+    };
+  }).filter(c=>c.sessionCount>0);
+}
+
+// All-time (not windowed) per-teacher stats, rolled up across their classes.
+function computeTeacherStats(){
+  return teachers.map(t=>{
+    const teacherClassIds = classes.filter(c=>c.teacherId===t.id).map(c=>c.id);
+    const rows = sessions.filter(s=>teacherClassIds.includes(s.classId));
+    const physical = rows.reduce((s,r)=>s+r.physical,0);
+    const online = rows.reduce((s,r)=>s+r.online,0);
+    const absent = rows.reduce((s,r)=>s+r.absent,0);
+    const totalMarked = physical+online+absent;
+    const diffs = rows.map(r=>minutesDiff(r.expectedStart, r.actualStart)).filter(d=>d!==null);
+    return {
+      teacherId: t.id,
+      name: t.name,
+      classCount: teacherClassIds.length,
+      sessionCount: rows.length,
+      physical, online, absent,
+      attendanceRate: totalMarked ? (physical+online)/totalMarked*100 : null,
+      avgPunctuality: diffs.length ? diffs.reduce((a,b)=>a+b,0)/diffs.length : null
+    };
+  }).filter(t=>t.sessionCount>0);
+}
+
+function renderClassPerformanceTable(){
+  const wrap = document.getElementById('classPerformanceTableWrap');
+  const data = computeClassStats().sort((a,b)=> (a.attendanceRate??999) - (b.attendanceRate??999));
+  if(!data.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
+  wrap.innerHTML = `<table class="perf-table"><thead><tr>
+    <th>Class</th><th>Teacher</th><th>Sessions</th><th>Physical</th><th>Online</th><th>Absent</th><th>Attendance Rate</th><th>Avg Punctuality</th>
+  </tr></thead><tbody>
+    ${data.map(c=>{
+      const rateClass = c.attendanceRate===null ? '' : (c.attendanceRate<70 ? 'warn' : (c.attendanceRate>=90 ? 'good' : ''));
+      const punctClass = c.avgPunctuality===null ? '' : (c.avgPunctuality>10 ? 'warn' : (c.avgPunctuality<=2 ? 'good' : ''));
+      const rateText = c.attendanceRate===null ? '—' : `${Math.round(c.attendanceRate)}%`;
+      const punctText = c.avgPunctuality===null ? '—' : (c.avgPunctuality>0 ? `+${Math.round(c.avgPunctuality)}m late` : (c.avgPunctuality<0 ? `${Math.abs(Math.round(c.avgPunctuality))}m early` : 'On time'));
+      return `<tr>
+        <td class="txt">${c.name}</td>
+        <td class="txt">${c.teacher}</td>
+        <td>${c.sessionCount}</td>
+        <td>${c.physical}</td>
+        <td>${c.online}</td>
+        <td>${c.absent}</td>
+        <td class="${rateClass}">${rateText}</td>
+        <td class="${punctClass}">${punctText}</td>
+      </tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+function renderTeacherPerformanceTable(){
+  const wrap = document.getElementById('teacherPerformanceTableWrap');
+  const data = computeTeacherStats().sort((a,b)=> (a.attendanceRate??999) - (b.attendanceRate??999));
+  if(!data.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
+  wrap.innerHTML = `<table class="perf-table"><thead><tr>
+    <th>Teacher</th><th>Classes</th><th>Sessions</th><th>Physical</th><th>Online</th><th>Absent</th><th>Attendance Rate</th><th>Avg Punctuality</th>
+  </tr></thead><tbody>
+    ${data.map(t=>{
+      const rateClass = t.attendanceRate===null ? '' : (t.attendanceRate<70 ? 'warn' : (t.attendanceRate>=90 ? 'good' : ''));
+      const punctClass = t.avgPunctuality===null ? '' : (t.avgPunctuality>10 ? 'warn' : (t.avgPunctuality<=2 ? 'good' : ''));
+      const rateText = t.attendanceRate===null ? '—' : `${Math.round(t.attendanceRate)}%`;
+      const punctText = t.avgPunctuality===null ? '—' : (t.avgPunctuality>0 ? `+${Math.round(t.avgPunctuality)}m late` : (t.avgPunctuality<0 ? `${Math.abs(Math.round(t.avgPunctuality))}m early` : 'On time'));
+      return `<tr>
+        <td class="txt">${t.name}</td>
+        <td>${t.classCount}</td>
+        <td>${t.sessionCount}</td>
+        <td>${t.physical}</td>
+        <td>${t.online}</td>
+        <td>${t.absent}</td>
+        <td class="${rateClass}">${rateText}</td>
+        <td class="${punctClass}">${punctText}</td>
+      </tr>`;
+    }).join('')}
+  </tbody></table>`;
+}
+
+let classAttendanceChart, teacherPunctualityChart;
+
+// ---------- Monthly Hours Tracker ----------
+let hoursCharts = new Map();
+
+function sessionDurationHours(s){
+  if(!s.actualStart || !s.actualFinish) return 0;
+  const [sh,sm] = s.actualStart.split(':').map(Number);
+  const [eh,em] = s.actualFinish.split(':').map(Number);
+  if([sh,sm,eh,em].some(Number.isNaN)) return 0;
+  let mins = (eh*60+em) - (sh*60+sm);
+  if(mins < 0) mins += 24*60; // defensive, in case of an overnight typo
+  return mins/60;
+}
+
+function computeClassHoursForMonth(classId, yearMonth){
+  return sessions
+    .filter(s=>s.classId===classId && s.date.slice(0,7)===yearMonth)
+    .reduce((sum,s)=>sum+sessionDurationHours(s), 0);
+}
+
+function daysInMonth(yearMonth){
+  const [y,m] = yearMonth.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
+// How far through the month "today" is, as a percentage — used to judge
+// whether a class is on pace, not just its final total. A month already
+// finished counts as 100% elapsed; a month that hasn't started yet is 0%.
+function expectedPacePercent(yearMonth){
+  const todayYearMonth = new Date().toISOString().slice(0,7);
+  if(yearMonth < todayYearMonth) return 100;
+  if(yearMonth > todayYearMonth) return 0;
+  return Math.min(100, (new Date().getDate() / daysInMonth(yearMonth)) * 100);
+}
+
+function destroyHoursCharts(){
+  hoursCharts.forEach(ch=>ch.destroy());
+  hoursCharts.clear();
+}
+
+function renderHoursTracker(){
+  const picker = document.getElementById('hoursMonthPicker');
+  if(!picker.value) picker.value = new Date().toISOString().slice(0,7);
+  const yearMonth = picker.value;
+  const wrap = document.getElementById('hoursTrackerWrap');
+  destroyHoursCharts();
+
+  if(!classes.length){ wrap.innerHTML = '<div class="empty">Add some classes first, with a planned monthly hours target, to see progress here.</div>'; return; }
+
+  const expectedPct = expectedPacePercent(yearMonth);
+  const PACE_BUFFER = 10; // percentage points of slack before flagging "behind"
+
+  // Group: teacher -> grade -> classes
+  const byTeacher = {};
+  classes.forEach(c=>{
+    const tId = c.teacherId || '_unassigned';
+    const grade = c.grade || 'Ungraded';
+    byTeacher[tId] = byTeacher[tId] || {};
+    byTeacher[tId][grade] = byTeacher[tId][grade] || [];
+    byTeacher[tId][grade].push(c);
+  });
+
+  const teacherIds = Object.keys(byTeacher).sort((a,b)=> teacherName(a).localeCompare(teacherName(b)));
+
+  wrap.innerHTML = teacherIds.map(tId=>{
+    const grades = Object.keys(byTeacher[tId]).sort();
+    const gradesHtml = grades.map(grade=>{
+      const cardsHtml = byTeacher[tId][grade].map(c=>{
+        const planned = c.plannedMonthlyHours || 0;
+        const completed = computeClassHoursForMonth(c.id, yearMonth);
+        const pct = planned>0 ? (completed/planned)*100 : 0;
+
+        let status, statusColor;
+        if(planned===0){
+          status = 'No target set'; statusColor = 'var(--ink-soft)';
+        }else if(completed >= planned){
+          status = 'Target met'; statusColor = 'var(--brass-dark)';
+        }else if(pct >= expectedPct - PACE_BUFFER){
+          status = 'On track'; statusColor = 'var(--brass-dark)';
+        }else{
+          status = 'Behind pace'; statusColor = 'var(--stamp)';
+        }
+
+        return `<div class="hours-card">
+          <canvas id="hoursDonut-${c.id}" width="104" height="104"></canvas>
+          <div class="hours-card-name">${c.name}</div>
+          <div class="hours-card-figure">${completed.toFixed(1)} / ${planned || '—'} hrs</div>
+          <div class="hours-card-status" style="color:${statusColor};">${status}</div>
+        </div>`;
+      }).join('');
+
+      return `<details class="report-class" open>
+        <summary>${grade}</summary>
+        <div class="hours-grid">${cardsHtml}</div>
+      </details>`;
+    }).join('');
+
+    return `<details class="report-teacher" open>
+      <summary>${teacherName(tId)}</summary>
+      <div class="report-body">${gradesHtml}</div>
+    </details>`;
+  }).join('');
+
+  // Charts are created after the canvases exist in the DOM.
+  if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping hour rings.'); return; }
+  classes.forEach(c=>{
+    const canvas = document.getElementById(`hoursDonut-${c.id}`);
+    if(!canvas) return;
+    const planned = c.plannedMonthlyHours || 0;
+    const completed = computeClassHoursForMonth(c.id, yearMonth);
+    const pct = planned>0 ? (completed/planned)*100 : 0;
+
+    let ringColor = 'rgba(231,234,242,0.25)';
+    if(planned>0){
+      ringColor = completed>=planned ? '#C9A227' : (pct >= expectedPct - PACE_BUFFER ? '#C9A227' : '#D6585B');
+    }
+    const completedCapped = planned>0 ? Math.min(completed, planned) : 0;
+    const remaining = planned>0 ? Math.max(planned-completed, 0) : 1;
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type:'doughnut',
+      data:{
+        datasets:[{
+          data: planned>0 ? [completedCapped, remaining] : [1],
+          backgroundColor: planned>0 ? [ringColor, 'rgba(231,234,242,0.12)'] : ['rgba(231,234,242,0.12)'],
+          borderWidth:0
+        }]
+      },
+      options:{
+        responsive:false,
+        cutout:'70%',
+        plugins:{ legend:{display:false}, tooltip:{enabled:false} }
+      }
+    });
+    hoursCharts.set(c.id, chart);
+  });
+}
+
+document.getElementById('hoursMonthPicker').addEventListener('change', renderHoursTracker);
+document.getElementById('hoursThisMonthBtn').addEventListener('click', ()=>{
+  document.getElementById('hoursMonthPicker').value = new Date().toISOString().slice(0,7);
+  renderHoursTracker();
+});
+
+
+function renderClassAttendanceChart(){
+  const el = document.getElementById('classAttendanceChart');
+  if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping.'); return; }
+  const data = computeClassStats().filter(c=>c.attendanceRate!==null).sort((a,b)=>a.attendanceRate-b.attendanceRate);
+  if(classAttendanceChart) classAttendanceChart.destroy();
+  if(!data.length) return;
+  classAttendanceChart = new Chart(el.getContext('2d'), {
+    type:'bar',
+    data:{
+      labels: data.map(c=>c.name),
+      datasets:[{
+        label:'Attendance rate %',
+        data: data.map(c=>Math.round(c.attendanceRate)),
+        backgroundColor: data.map(c=> c.attendanceRate<70 ? '#D6585B' : (c.attendanceRate>=90 ? '#C9A227' : '#5D7BB5'))
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{beginAtZero:true, max:100, ticks:{color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}},
+        y:{ticks:{color:'#9AA6C3', font:{size:10}}, grid:{display:false}}
+      }
+    }
+  });
+}
+
+function renderTeacherPunctualityChart(){
+  const el = document.getElementById('teacherPunctualityChart');
+  if(typeof Chart === 'undefined'){ console.warn('Chart.js not loaded — skipping.'); return; }
+  const data = computeTeacherStats().filter(t=>t.avgPunctuality!==null).sort((a,b)=>b.avgPunctuality-a.avgPunctuality);
+  if(teacherPunctualityChart) teacherPunctualityChart.destroy();
+  if(!data.length) return;
+  teacherPunctualityChart = new Chart(el.getContext('2d'), {
+    type:'bar',
+    data:{
+      labels: data.map(t=>t.name),
+      datasets:[{
+        label:'Avg minutes late (negative = early)',
+        data: data.map(t=>Math.round(t.avgPunctuality)),
+        backgroundColor: data.map(t=> t.avgPunctuality>10 ? '#D6585B' : (t.avgPunctuality<=2 ? '#C9A227' : '#5D7BB5'))
+      }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#9AA6C3'}, grid:{color:'rgba(231,234,242,0.08)'}},
+        y:{ticks:{color:'#9AA6C3', font:{size:10}}, grid:{display:false}}
+      }
+    }
+  });
 }
 
 function daysAgo(n){
@@ -1600,6 +1959,10 @@ function renderDashboard(){
   renderAlerts();
   renderAttendanceChart();
   renderAdmissionsChart();
+  renderClassAttendanceChart();
+  renderTeacherPunctualityChart();
+  renderClassPerformanceTable();
+  renderTeacherPerformanceTable();
 }
 
 function renderAll(){

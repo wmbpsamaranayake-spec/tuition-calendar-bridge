@@ -279,6 +279,39 @@ app.delete('/api/users/:id', requireAuth('admin'), async (req, res) => {
   }
 });
 
+app.put('/api/users/:id', requireAuth('admin'), async (req, res) => {
+  try {
+    const { name, role, password } = req.body || {};
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+
+    if (role !== undefined) {
+      const newRole = role === 'admin' ? 'admin' : 'staff';
+      // Don't let the last admin be demoted to staff.
+      if (newRole === 'staff') {
+        const target = await db.collection('users').findOne({ id: req.params.id });
+        if (target && target.role === 'admin') {
+          const adminCount = await db.collection('users').countDocuments({ role: 'admin' });
+          if (adminCount <= 1) return res.status(400).json({ error: 'cannot_demote_last_admin' });
+        }
+      }
+      updateFields.role = newRole;
+    }
+
+    if (password) {
+      updateFields.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    await db.collection('users').updateOne({ id: req.params.id }, { $set: updateFields });
+    const updated = await db.collection('users').findOne({ id: req.params.id });
+    const { _id, passwordHash, ...safe } = updated || {};
+    res.json(safe);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'update_failed' });
+  }
+});
+
 app.get('/api/schedule', requireAuth(), async (req, res) => {
   try {
     if (!isConnected) return res.status(401).json({ error: 'not_connected' });
@@ -360,6 +393,19 @@ COLLECTIONS.forEach(name => {
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: 'delete_failed' });
+    }
+  });
+
+  app.put(`/api/${name}/:id`, requireAuth(), async (req, res) => {
+    try {
+      const { id, _id, ...updateFields } = req.body || {};
+      await db.collection(name).updateOne({ id: req.params.id }, { $set: updateFields });
+      const updated = await db.collection(name).findOne({ id: req.params.id });
+      const { _id: __, ...clean } = updated || {};
+      res.json(clean);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'update_failed' });
     }
   });
 });

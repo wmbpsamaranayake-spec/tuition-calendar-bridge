@@ -1349,6 +1349,16 @@ function printSlip(){
 }
 document.getElementById('smsModalPrintBtn').addEventListener('click', printSlip);
 
+// Print directly from the sessions table, for any already-saved session —
+// no need to log a new one just to test the printer.
+function printSlipForSession(id){
+  const s = sessions.find(x=>x.id===id);
+  if(!s){ alert('Could not find that session.'); return; }
+  pendingSmsSession = s;
+  printSlip();
+}
+window.printSlipForSession = printSlipForSession;
+
 function closeSmsModal(){
   document.getElementById('smsModalOverlay').style.display = 'none';
   pendingSmsSessionId = null;
@@ -1497,7 +1507,10 @@ function renderSessionsTable(){
       <td>${s.physical}</td>
       <td>${s.online}</td>
       <td>${s.absent}</td>
-      <td>${canEdit ? `<button class="ghost" onclick="editSession('${s.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('sessions','${s.id}')">Remove</button>` : '<span style="color:var(--ink-soft); font-size:12px;">—</span>'}</td>
+      <td>
+        <button class="ghost" onclick="printSlipForSession('${s.id}')" style="margin-right:6px;">Print</button>
+        ${canEdit ? `<button class="ghost" onclick="editSession('${s.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('sessions','${s.id}')">Remove</button>` : ''}
+      </td>
     </tr>`).join('')}
   </tbody></table>`;
 }

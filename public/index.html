@@ -1315,22 +1315,22 @@ function printSlip(){
     <html><head><title>Session Slip</title>
     <style>
       @page { size: 80mm auto; margin: 0; }
-      *{ box-sizing:border-box; }
+      *{ box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       body{
-        font-family:'Courier New', monospace; font-size:12px; color:#000;
-        width:72mm; margin:0 auto;
+        font-family:Arial, Helvetica, sans-serif; font-size:15px; font-weight:600; color:#000;
+        width:72mm; margin:0 auto; line-height:1.45;
         padding:3mm 2mm 20mm; /* generous bottom feed for the auto-cutter */
       }
       .center{ text-align:center; }
-      .title{ font-size:15px; font-weight:bold; letter-spacing:0.5px; }
-      hr{ border:none; border-top:1px dashed #000; margin:7px 0; }
-      .row{ display:flex; justify-content:space-between; gap:8px; padding:2px 0; font-size:12px; }
-      .row span:first-child{ font-weight:bold; }
-      .row span:last-child{ text-align:right; }
-      .warn{ font-weight:bold; text-align:center; font-size:12px; margin:2px 0; }
-      .notes-label{ font-weight:bold; font-size:11px; margin-top:2px; }
-      .notes{ font-size:11.5px; white-space:pre-wrap; word-wrap:break-word; }
-      .foot{ font-size:10px; margin-top:10px; text-align:center; }
+      .title{ font-size:19px; font-weight:800; letter-spacing:0.5px; }
+      hr{ border:none; border-top:2px dashed #000; margin:8px 0; }
+      .row{ display:flex; justify-content:space-between; gap:8px; padding:3px 0; font-size:15px; }
+      .row span:first-child{ font-weight:700; }
+      .row span:last-child{ text-align:right; font-weight:600; }
+      .warn{ font-weight:800; text-align:center; font-size:15px; margin:3px 0; }
+      .notes-label{ font-weight:800; font-size:14px; margin-top:3px; }
+      .notes{ font-size:14px; font-weight:600; white-space:pre-wrap; word-wrap:break-word; }
+      .foot{ font-size:12px; font-weight:600; margin-top:10px; text-align:center; }
     </style>
     </head><body>
       <div class="center title">EMINENT EDIFICATION</div>

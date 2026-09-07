@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>The Register — Tuition Operations</title>
+<title>The Register — Tuition Operations Ledger</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -558,7 +558,8 @@
   <div class="card" style="max-width:440px; width:100%;">
     <h3 style="margin-top:0;">Session Saved — Send SMS?</h3>
     <div id="smsModalSummary" style="font-size:13px; line-height:1.6; margin-bottom:14px;"></div>
-    <div style="display:flex; gap:10px; justify-content:flex-end;">
+    <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+      <button class="ghost" id="smsModalPrintBtn">Print Slip</button>
       <button class="ghost" id="smsModalSkipBtn">Skip</button>
       <button class="primary" id="smsModalSendBtn">Send SMS</button>
     </div>
@@ -1219,16 +1220,20 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
     document.getElementById('s_date').valueAsDate = new Date();
     document.getElementById('s_expected').value='';
     currentExpected = { value: null, source: null, finish: null };
-    showSmsModalForSession(item.id);
+    showSmsModalForSession(item);
   }
   renderSessionsTable();
 });
 
 // ---------- SMS confirmation popup ----------
 let pendingSmsSessionId = null;
+let pendingSmsSession = null; // full session record, used for the structured print slip
+let pendingSmsText = '';
 
-async function showSmsModalForSession(sessionId){
-  pendingSmsSessionId = sessionId;
+async function showSmsModalForSession(session){
+  pendingSmsSessionId = session.id;
+  pendingSmsSession = session;
+  pendingSmsText = '';
   const summary = document.getElementById('smsModalSummary');
   const sendBtn = document.getElementById('smsModalSendBtn');
   const status = document.getElementById('smsModalStatus');
@@ -1239,12 +1244,13 @@ async function showSmsModalForSession(sessionId){
   document.getElementById('smsModalOverlay').style.display = 'flex';
 
   try{
-    const res = await fetch(`${apiBase()}/api/sessions/${sessionId}/sms-preview`);
+    const res = await fetch(`${apiBase()}/api/sessions/${session.id}/sms-preview`);
     if(!res.ok){
       summary.textContent = 'Could not load a message preview for this session.';
       return;
     }
     const data = await res.json();
+    pendingSmsText = data.text;
     const recipientsLine = data.recipients.length
       ? `Will send to: ${data.recipients.map(r=>r.label).join(', ')}`
       : 'No phone numbers on file for this teacher or the Operations Manager — nothing to send.';
@@ -1260,9 +1266,94 @@ async function showSmsModalForSession(sessionId){
   }
 }
 
+// Formatted for an 80mm auto-cut thermal printer: fixed-width rows (not
+// a raw text dump), and generous blank feed at the bottom so the
+// auto-cutter lands below the last printed line instead of through it.
+function printSlip(){
+  const s = pendingSmsSession;
+  if(!s) return;
+
+  const cls = classes.find(c=>c.id===s.classId);
+  const clsName = cls ? cls.name : '—';
+  const teacherNm = cls ? teacherName(cls.teacherId) : '—';
+  const lateMin = minutesDiff(s.expectedStart, s.actualStart);
+  const overMin = minutesDiff(s.expectedFinish, s.actualFinish);
+
+  const rows = [
+    ['Class', clsName],
+    ['Teacher', teacherNm],
+    ['Date', s.date],
+    ['Expected Start', s.expectedStart || '-'],
+    ['Actual Start', s.actualStart],
+    ['Actual Finish', s.actualFinish],
+    ['Physical', String(s.physical)],
+    ['Online', String(s.online)],
+    ['Absent', String(s.absent)]
+  ];
+  const rowsHtml = rows.map(([k,v])=>
+    `<div class="row"><span>${k}</span><span>${v}</span></div>`
+  ).join('');
+
+  let warnings = [];
+  if(lateMin!==null && lateMin>5) warnings.push(`STARTED ${lateMin} MIN LATE`);
+  if(overMin!==null && overMin>5) warnings.push(`RAN ${overMin} MIN OVER`);
+  const warnHtml = warnings.length
+    ? `<hr>${warnings.map(w=>`<div class="warn">** ${w} **</div>`).join('')}`
+    : '';
+
+  const notesHtml = s.notes
+    ? `<hr><div class="notes-label">Notes</div><div class="notes">${s.notes}</div>`
+    : '';
+
+  const printWindow = window.open('', '_blank', 'width=420,height=640');
+  if(!printWindow){
+    alert('Your browser blocked the print window. Please allow pop-ups for this site and try again.');
+    return;
+  }
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html><head><title>Session Slip</title>
+    <style>
+      @page { size: 80mm auto; margin: 0; }
+      *{ box-sizing:border-box; }
+      body{
+        font-family:'Courier New', monospace; font-size:12px; color:#000;
+        width:72mm; margin:0 auto;
+        padding:3mm 2mm 20mm; /* generous bottom feed for the auto-cutter */
+      }
+      .center{ text-align:center; }
+      .title{ font-size:15px; font-weight:bold; letter-spacing:0.5px; }
+      hr{ border:none; border-top:1px dashed #000; margin:7px 0; }
+      .row{ display:flex; justify-content:space-between; gap:8px; padding:2px 0; font-size:12px; }
+      .row span:first-child{ font-weight:bold; }
+      .row span:last-child{ text-align:right; }
+      .warn{ font-weight:bold; text-align:center; font-size:12px; margin:2px 0; }
+      .notes-label{ font-weight:bold; font-size:11px; margin-top:2px; }
+      .notes{ font-size:11.5px; white-space:pre-wrap; word-wrap:break-word; }
+      .foot{ font-size:10px; margin-top:10px; text-align:center; }
+    </style>
+    </head><body>
+      <div class="center title">EMINENT EDIFICATION</div>
+      <div class="center">Session Slip</div>
+      <hr>
+      ${rowsHtml}
+      ${warnHtml}
+      ${notesHtml}
+      <hr>
+      <div class="foot">Printed ${new Date().toLocaleString()}</div>
+    </body></html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(()=>{ printWindow.print(); }, 300);
+}
+document.getElementById('smsModalPrintBtn').addEventListener('click', printSlip);
+
 function closeSmsModal(){
   document.getElementById('smsModalOverlay').style.display = 'none';
   pendingSmsSessionId = null;
+  pendingSmsSession = null;
+  pendingSmsText = '';
 }
 
 document.getElementById('smsModalSkipBtn').addEventListener('click', closeSmsModal);

@@ -175,6 +175,15 @@
   .pager-btn:disabled{opacity:0.35; cursor:default;}
   .pager-gap{color:var(--ink-soft); padding:0 4px; font-size:12px;}
   .pager-size{width:auto; padding:5px 8px; font-size:12px; margin-left:8px;}
+
+  /* Review-before-save popup */
+  .review-row{display:flex; justify-content:space-between; gap:14px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
+  .review-row span:first-child{color:var(--ink-soft); font-size:11px; text-transform:uppercase; letter-spacing:1px; padding-top:2px; flex:none;}
+  .review-row span:last-child{font-family:var(--font-mono); text-align:right; word-break:break-word; white-space:pre-wrap;}
+  .review-flags{margin-top:14px;}
+  .review-flag{font-size:12.5px; line-height:1.45; padding:8px 10px; border-radius:3px; margin-bottom:6px;}
+  .review-flag.check{background:rgba(214,88,91,0.14); border-left:3px solid var(--stamp); color:var(--ink);}
+  .review-flag.info{background:var(--paper-dark); border-left:3px solid var(--brass); color:var(--ink-soft);}
   table.report-table{margin:6px 0 10px 18px; width:calc(100% - 18px);}
   table.report-table th, table.report-table td{padding:6px 8px; font-size:12px;}
 
@@ -576,6 +585,19 @@
       <button class="primary" id="smsModalSendBtn">Send SMS</button>
     </div>
     <div id="smsModalStatus" style="margin-top:12px; font-size:12.5px;"></div>
+  </div>
+</div>
+
+<!-- Review step shown after pressing Save on a NEW session; nothing is saved until Confirm -->
+<div id="sessionReviewOverlay" style="display:none; position:fixed; inset:0; background:rgba(10,21,48,0.7); z-index:1000; align-items:center; justify-content:center; padding:16px;">
+  <div class="card" style="max-width:460px; width:100%; max-height:92vh; overflow:auto;">
+    <h3 style="margin-top:0;">Review before saving</h3>
+    <div id="sessionReviewBody"></div>
+    <div id="sessionReviewStatus" style="margin-top:10px; font-size:12.5px;"></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap;">
+      <button type="button" class="ghost" id="sessionReviewBackBtn">Go back &amp; edit</button>
+      <button type="button" class="primary" id="sessionReviewConfirmBtn">Confirm &amp; save</button>
+    </div>
   </div>
 </div>
 
@@ -1303,18 +1325,131 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
     const idx = sessions.findIndex(s=>s.id===editingSessionId);
     if(idx>-1) sessions[idx] = updated;
     cancelSessionEdit();
+    renderSessionsTable();
   }else{
-    const item = await apiAdd('sessions', payload);
+    // New session: show a review step first. Nothing is saved until the
+    // person presses "Confirm & save"; "Go back & edit" leaves the form as is.
+    openSessionReview(payload);
+  }
+});
+
+// ---------- Review before saving a new session ----------
+let pendingReviewPayload = null;
+let reviewSaving = false;
+const REVIEW_LATE_THRESHOLD_MIN = 5; // same threshold the SMS uses for its warnings
+
+function escapeHtml(v){
+  return String(v ?? '').replace(/[&<>"']/g, ch => (
+    {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch]
+  ));
+}
+
+function localDateString(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Things that look like typos (check) and facts worth knowing before the
+// teacher is texted about them (info). None of these block saving.
+function sessionReviewFlags(p){
+  const check = [], info = [];
+  const length = minutesDiff(p.actualStart, p.actualFinish);
+
+  if(length !== null && length <= 0){
+    check.push('The finish time is not after the start time. Please double-check both times.');
+  }else if(length !== null && length > 240){
+    check.push(`This session is ${(length/60).toFixed(1)} hours long. Is that right?`);
+  }else if(length !== null && length < 15){
+    check.push(`This session is only ${length} minutes long. Is that right?`);
+  }
+  if(p.date !== localDateString()){
+    check.push(`The date is ${p.date}, which is not today.`);
+  }
+  if(p.physical + p.online + p.absent === 0){
+    check.push('Physical, online and absent are all 0.');
+  }
+  if(!p.expectedStart){
+    info.push('No scheduled time was found for this class on this date, so punctuality will not be tracked for this session.');
+  }
+
+  const late = minutesDiff(p.expectedStart, p.actualStart);
+  const over = minutesDiff(p.expectedFinish, p.actualFinish);
+  if(late !== null && late > REVIEW_LATE_THRESHOLD_MIN) info.push(`Started ${late} min late. The SMS will include a late-start warning.`);
+  if(over !== null && over > REVIEW_LATE_THRESHOLD_MIN) info.push(`Ran ${over} min over the scheduled end. The SMS will include an overtime warning.`);
+  return { check, info };
+}
+
+function openSessionReview(payload){
+  pendingReviewPayload = payload;
+  const cls = classes.find(c=>c.id === payload.classId);
+  const rows = [
+    ['Class', cls ? cls.name : '—'],
+    ['Teacher', cls ? teacherName(cls.teacherId) : '—'],
+    ['Date', payload.date],
+    ['Expected start', payload.expectedStart || '—'],
+    ['Actual start', payload.actualStart],
+    ['Actual finish', payload.actualFinish],
+    ['Physical', payload.physical],
+    ['Online', payload.online],
+    ['Absent', payload.absent]
+  ];
+  if(payload.notes) rows.push(['Notes', payload.notes]);
+
+  const { check, info } = sessionReviewFlags(payload);
+  const flagsHtml = (check.length || info.length)
+    ? `<div class="review-flags">
+        ${check.map(t=>`<div class="review-flag check"><b>Please check:</b> ${escapeHtml(t)}</div>`).join('')}
+        ${info.map(t=>`<div class="review-flag info">${escapeHtml(t)}</div>`).join('')}
+      </div>`
+    : '';
+
+  document.getElementById('sessionReviewBody').innerHTML =
+    rows.map(([k,v])=>`<div class="review-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join('') + flagsHtml;
+  document.getElementById('sessionReviewStatus').textContent = '';
+  setReviewBusy(false);
+  document.getElementById('sessionReviewOverlay').style.display = 'flex';
+  // Focus "Go back" rather than "Confirm", so pressing Enter twice in a row
+  // can never save something the person hasn't actually read.
+  document.getElementById('sessionReviewBackBtn').focus();
+}
+
+function setReviewBusy(busy){
+  reviewSaving = busy;
+  document.getElementById('sessionReviewConfirmBtn').disabled = busy;
+  document.getElementById('sessionReviewBackBtn').disabled = busy;
+  document.getElementById('sessionReviewConfirmBtn').textContent = busy ? 'Saving…' : 'Confirm & save';
+}
+
+function closeSessionReview(){
+  document.getElementById('sessionReviewOverlay').style.display = 'none';
+  pendingReviewPayload = null;
+}
+
+async function confirmSessionReview(){
+  if(!pendingReviewPayload || reviewSaving) return;
+  const status = document.getElementById('sessionReviewStatus');
+  setReviewBusy(true);
+  try{
+    const item = await apiAdd('sessions', pendingReviewPayload);
     sessions.push(item);
     getPager('sessions').page = 1; // newest first
-    e.target.reset();
+    closeSessionReview();
+    document.getElementById('sessionForm').reset();
     document.getElementById('s_date').valueAsDate = new Date();
-    document.getElementById('s_expected').value='';
+    document.getElementById('s_expected').value = '';
     currentExpected = { value: null, source: null, finish: null };
+    renderSessionsTable();
     showSmsModalForSession(item);
+  }catch(err){
+    // The form still holds everything they typed, so nothing is lost.
+    console.error(err);
+    status.innerHTML = '<span style="color:var(--stamp);">Could not save. Your entries are still in the form. Check your connection and try again.</span>';
+    setReviewBusy(false);
   }
-  renderSessionsTable();
-});
+}
+
+document.getElementById('sessionReviewBackBtn').addEventListener('click', closeSessionReview);
+document.getElementById('sessionReviewConfirmBtn').addEventListener('click', confirmSessionReview);
 
 // ---------- SMS confirmation popup ----------
 let pendingSmsSessionId = null;

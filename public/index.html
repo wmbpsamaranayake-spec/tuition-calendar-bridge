@@ -176,6 +176,64 @@
   .pager-gap{color:var(--ink-soft); padding:0 4px; font-size:12px;}
   .pager-size{width:auto; padding:5px 8px; font-size:12px; margin-left:8px;}
 
+  /* Monthly teacher report: on-screen preview and PDF/print */
+  #reportOverlay{display:none; position:fixed; inset:0; background:rgba(10,21,48,0.88); z-index:1100; overflow:auto; padding:18px 12px 48px;}
+  .rp-toolbar{max-width:210mm; margin:0 auto 12px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;}
+  .rp-toolbar .rp-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .rp-toolbar .rp-status{flex-basis:100%; font-size:12.5px; color:var(--ink-soft); line-height:1.45;}
+  .rp-paper{max-width:210mm; margin:0 auto; background:#fff; color:#16233F; padding:14mm; font-family:Arial, Helvetica, sans-serif; font-size:12.5px; line-height:1.45; box-shadow:0 8px 40px rgba(0,0,0,0.5); -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  .rp-paper, .rp-paper *{box-sizing:border-box;}
+  .rp-head{display:flex; justify-content:space-between; align-items:center; border-bottom:3px double #0F1F3E; padding-bottom:10px; margin-bottom:10px;}
+  .rp-brand{display:flex; align-items:center; gap:12px;}
+  .rp-brand img{width:50px; height:50px;}
+  .rp-brand .org{font-family:Georgia,'Times New Roman',serif; font-weight:700; font-size:18px; color:#0F1F3E; letter-spacing:0.4px;}
+  .rp-brand .sub{font-size:9.5px; letter-spacing:2px; text-transform:uppercase; color:#52607C;}
+  .rp-title{text-align:right;}
+  .rp-title .t{font-family:Georgia,'Times New Roman',serif; font-weight:700; font-size:17px; color:#0F1F3E;}
+  .rp-title .m{font-size:13px; font-weight:700; color:#8A6D10;}
+  .rp-meta{display:flex; justify-content:space-between; gap:12px; font-size:11.5px; color:#52607C; margin-bottom:12px;}
+  .rp-meta b{color:#16233F;}
+  .rp-kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;}
+  .rp-kpi{border:1px solid #D5D9E3; border-top:3px solid #C9A227; border-radius:3px; padding:8px 10px; break-inside:avoid;}
+  .rp-kpi .l{font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#52607C;}
+  .rp-kpi .v{font-family:Consolas,Menlo,'Courier New',monospace; font-size:21px; font-weight:700; color:#0F1F3E; margin-top:2px;}
+  .rp-kpi .f{font-size:10.5px; color:#52607C; margin-top:1px;}
+  .rp-h{font-family:Georgia,'Times New Roman',serif; font-weight:700; font-size:14px; color:#0F1F3E; border-bottom:1px solid #C9A227; padding-bottom:3px; margin-bottom:7px;}
+  .rp-sec{margin-bottom:14px; break-inside:avoid;}
+  .rp-two{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; align-items:start;}
+  .rp-box{border:1px solid #D5D9E3; border-radius:3px; padding:9px 12px; break-inside:avoid;}
+  .rp-box.good{border-left:4px solid #C9A227;}
+  .rp-box.focus{border-left:4px solid #B33A3A;}
+  .rp-box h4{margin:0 0 6px; font-family:Georgia,'Times New Roman',serif; font-size:13px; color:#0F1F3E;}
+  .rp-box ul, .rp-notes ul{margin:0; padding-left:16px;}
+  .rp-box li{margin-bottom:5px; font-size:11.5px;}
+  table.rp-table{width:100%; border-collapse:collapse; font-size:11px;}
+  table.rp-table th{text-align:left; font-size:9px; text-transform:uppercase; letter-spacing:0.8px; color:#52607C; border-bottom:1.5px solid #0F1F3E; padding:5px 6px; font-family:Arial,Helvetica,sans-serif;}
+  table.rp-table td{padding:6px; border-bottom:1px solid #E3E6EE; vertical-align:middle; font-family:Arial,Helvetica,sans-serif; color:#16233F;}
+  table.rp-table th.num, table.rp-table td.num{text-align:right; white-space:nowrap;}
+  table.rp-table tr{break-inside:avoid;}
+  table.rp-table tr.rp-total td{font-weight:700; border-top:1.5px solid #0F1F3E; border-bottom:none; background:#F4F5F9;}
+  .rp-bar{height:8px; background:#E3E6EE; border-radius:4px; overflow:hidden;}
+  .rp-bar i{display:block; height:100%;}
+  .rp-small{font-size:11px; color:#52607C; margin-top:4px;}
+  .rp-notes{font-size:10.5px; color:#52607C; border-top:1px solid #D5D9E3; padding-top:8px; margin-top:6px;}
+  .rp-notes li{margin-bottom:3px;}
+  .rp-foot{font-size:9.5px; color:#8A93A8; text-align:center; margin-top:14px;}
+  .rp-comments{margin-bottom:14px;}
+  .rp-comments-input{width:100%; font-family:Arial,Helvetica,sans-serif; font-size:12.5px; line-height:1.5; color:#16233F; background:#FBFBFD; border:1px dashed #9AA6C3; border-radius:3px; padding:8px 10px; resize:vertical;}
+  .rp-comments-print{display:none; white-space:pre-wrap; font-size:12.5px; line-height:1.5; color:#16233F; border-left:4px solid #0F1F3E; padding:2px 0 2px 10px;}
+  @page{ size:A4; margin:14mm; }
+  @media print{
+    body.printing-report{background:#fff !important;}
+    body.printing-report > *:not(#reportOverlay){display:none !important;}
+    body.printing-report #reportOverlay{display:block !important; position:static !important; background:none !important; padding:0 !important; overflow:visible !important;}
+    body.printing-report .rp-toolbar{display:none !important;}
+    body.printing-report .rp-paper{padding:0 !important; box-shadow:none !important; max-width:none !important; margin:0 !important;}
+    .rp-comments-input{display:none !important;}
+    .rp-comments-print{display:block !important;}
+    .rp-comments:not(.has-text){display:none !important;}
+  }
+
   /* Review-before-save popup */
   .review-row{display:flex; justify-content:space-between; gap:14px; padding:7px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
   .review-row span:first-child{color:var(--ink-soft); font-size:11px; text-transform:uppercase; letter-spacing:1px; padding-top:2px; flex:none;}
@@ -470,6 +528,19 @@
 
   <!-- REPORTS -->
   <section class="view" id="view-reports">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="toprow">
+        <h3 style="margin:0;">Monthly Teacher Reports</h3>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <input type="month" id="tr_month" style="width:auto;">
+          <button class="ghost" id="tr_lastMonthBtn">Last month</button>
+          <button class="ghost" id="tr_thisMonthBtn">This month</button>
+        </div>
+      </div>
+      <div class="note">One report per teacher for the chosen month: planned vs actual hours, attendance and absences, new admissions and punctuality, with what went well and where to focus. Open a report to read it, add your own comments (or draft them with AI), then press <b>Save as PDF</b> to send it to the teacher.</div>
+      <div id="teacherReportList"></div>
+    </div>
+
     <div class="card">
       <div class="toprow">
         <h3 style="margin:0;">Teacher Report</h3>
@@ -586,6 +657,19 @@
     </div>
     <div id="smsModalStatus" style="margin-top:12px; font-size:12.5px;"></div>
   </div>
+</div>
+
+<!-- Monthly teacher report preview. "Save as PDF" prints only this (see the printing-report rules). -->
+<div id="reportOverlay">
+  <div class="rp-toolbar">
+    <div class="rp-actions">
+      <button type="button" class="primary" id="rpPrintBtn">Save as PDF</button>
+      <button type="button" class="ghost" id="rpAiBtn">Draft comments with AI</button>
+    </div>
+    <button type="button" class="ghost" id="rpCloseBtn">Close</button>
+    <div class="rp-status" id="rpStatus"></div>
+  </div>
+  <div class="rp-paper" id="rpPaper"></div>
 </div>
 
 <!-- Review step shown after pressing Save on a NEW session; nothing is saved until Confirm -->
@@ -2348,6 +2432,7 @@ function exportReportsToExcel(){
 document.getElementById('downloadExcelBtn').addEventListener('click', exportReportsToExcel);
 
 function renderReports(){
+  renderTeacherReportList();
   const wrap = document.getElementById('reportsWrap');
   if(!sessions.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
 
@@ -2439,6 +2524,497 @@ function renderAll(){
   renderSessionsTable();
   renderDashboard();
 }
+
+// ---------- Monthly teacher reports ----------
+// One report per teacher per month, built from the records already loaded in
+// this page. The figures and the "went well / focus areas" lists are computed
+// from those records (no AI), so every statement traces back to a number. AI
+// is only used to draft the optional comments paragraph, which a person edits.
+const REPORT_LATE_MIN = 5;      // same "late" threshold the SMS and review step use
+const REPORT_HOURS_EPS = 0.02;  // about a minute, so 7.99 hours vs 8 isn't called "short"
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const reportComments = {};      // kept for this page visit only: `${teacherId}|${ym}` -> text
+let currentReport = null;       // { teacher, ym, data, obs, syncComments }
+let reportSavedTitle = null;
+
+function localMonthString(offsetMonths = 0){
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offsetMonths);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function shiftMonth(ym, delta){
+  const [y,m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function fmtHours(n){ return String(Math.round(n * 10) / 10); }
+function fmtShortDate(iso){ const [, m, d] = iso.split('-').map(Number); return `${d} ${MONTH_ABBR[m-1]}`; }
+function plural(n, word){ return `${n} ${word}${n === 1 ? '' : 's'}`; }
+function fmtSigned(n){ const r = Math.round(n); return r > 0 ? `+${r}` : String(r); }
+function listNames(names, max = 4){
+  if(names.length <= max){
+    return names.length > 1 ? `${names.slice(0,-1).join(', ')} and ${names[names.length-1]}` : (names[0] || '');
+  }
+  return `${names.slice(0, max).join(', ')} and ${names.length - max} more`;
+}
+
+// Raw numbers for one teacher's classes in one month.
+function reportCore(teacherClasses, ym){
+  const ids = new Set(teacherClasses.map(c => c.id));
+  const monthSessions = sessions.filter(s => ids.has(s.classId) && s.date.slice(0,7) === ym);
+  const rows = teacherClasses.map(c=>{
+    const cs = monthSessions.filter(s => s.classId === c.id);
+    const planned = getPlannedHoursForClassMonth(c.id, ym);
+    const isOverride = plannedHoursOverrides.some(p => p.classId === c.id && p.month === ym);
+    const actual = cs.reduce((sum,s) => sum + sessionDurationHours(s), 0);
+    const physical = cs.reduce((a,s) => a + (s.physical || 0), 0);
+    const online = cs.reduce((a,s) => a + (s.online || 0), 0);
+    const absent = cs.reduce((a,s) => a + (s.absent || 0), 0);
+    const marked = physical + online + absent;
+    const starts = cs.map(s => minutesDiff(s.expectedStart, s.actualStart)).filter(d => d !== null);
+    const finishes = cs.map(s => minutesDiff(s.expectedFinish, s.actualFinish)).filter(d => d !== null);
+    return {
+      id: c.id, name: c.name, grade: c.grade || '',
+      planned, isOverride, actual, sessions: cs.length,
+      physical, online, absent,
+      attendanceRate: marked ? (physical + online) / marked * 100 : null,
+      measured: starts.length,
+      late: starts.filter(d => d > REPORT_LATE_MIN).length,
+      startDiffSum: starts.reduce((a,d) => a + d, 0),
+      over: finishes.filter(d => d > REPORT_LATE_MIN).length
+    };
+  }).filter(r => r.sessions > 0 || r.planned > 0)
+    .sort((a,b) => a.name.localeCompare(b.name));
+
+  const sum = f => rows.reduce((a,r) => a + f(r), 0);
+  const targetRows = rows.filter(r => r.planned > 0);
+  const physical = sum(r => r.physical), online = sum(r => r.online), absent = sum(r => r.absent);
+  const marked = physical + online + absent;
+  const measured = sum(r => r.measured);
+  const total = sum(r => r.sessions);
+  return {
+    rows, monthSessions,
+    totals: {
+      sessions: total,
+      classesWithSessions: rows.filter(r => r.sessions > 0).length,
+      plannedHours: targetRows.reduce((a,r) => a + r.planned, 0),
+      actualHours: sum(r => r.actual),
+      actualOnTargets: targetRows.reduce((a,r) => a + r.actual, 0),
+      physical, online, absent,
+      attendanceRate: marked ? (physical + online) / marked * 100 : null,
+      measured, unmeasured: total - measured,
+      late: sum(r => r.late),
+      avgStartDiff: measured ? sum(r => r.startDiffSum) / measured : null,
+      over: sum(r => r.over)
+    }
+  };
+}
+
+function buildTeacherMonthReport(teacherId, ym){
+  const teacher = teachers.find(t => t.id === teacherId);
+  const teacherClasses = classes.filter(c => c.teacherId === teacherId);
+  const ids = new Set(teacherClasses.map(c => c.id));
+  const cur = reportCore(teacherClasses, ym);
+
+  const prevYm = shiftMonth(ym, -1);
+  const prevCore = reportCore(teacherClasses, prevYm);
+  const prev = prevCore.totals.sessions > 0 ? {
+    ym: prevYm, label: monthLabel(prevYm),
+    attendanceRate: prevCore.totals.attendanceRate,
+    avgStartDiff: prevCore.totals.avgStartDiff,
+    sessions: prevCore.totals.sessions
+  } : null;
+
+  const nowYm = localMonthString();
+  const status = ym > nowYm ? 'future' : (ym === nowYm ? 'in_progress' : 'complete');
+  const pacePct = status === 'complete' ? 100 : (status === 'future' ? 0 : Math.min(100, new Date().getDate() / daysInMonth(ym) * 100));
+
+  const rows = cur.rows.map(r=>{
+    let hoursStatus, shortBy = 0;
+    const pct = r.planned > 0 ? r.actual / r.planned * 100 : null;
+    if(!(r.planned > 0)) hoursStatus = 'no_target';
+    else if(status === 'future') hoursStatus = 'upcoming';
+    else if(r.actual + REPORT_HOURS_EPS >= r.planned) hoursStatus = 'met';
+    else if(status === 'complete'){ hoursStatus = 'short'; shortBy = r.planned - r.actual; }
+    else { hoursStatus = pct >= pacePct - 10 ? 'on_track' : 'behind'; shortBy = r.planned - r.actual; }
+    return { ...r, hoursPct: pct, hoursStatus, shortBy };
+  });
+
+  const admissionsList = admissions
+    .filter(a => ids.has(a.classId) && a.date.slice(0,7) === ym)
+    .sort((a,b) => a.date.localeCompare(b.date))
+    .map(a => ({ name: a.name, className: className(a.classId), date: a.date }));
+
+  const lateSessions = cur.monthSessions
+    .map(s => ({ s, diff: minutesDiff(s.expectedStart, s.actualStart) }))
+    .filter(x => x.diff !== null && x.diff > REPORT_LATE_MIN)
+    .sort((a,b) => a.s.date.localeCompare(b.s.date))
+    .map(x => ({ date: x.s.date, className: className(x.s.classId), expected: x.s.expectedStart, actual: x.s.actualStart, minutes: x.diff }));
+
+  return {
+    teacher, ym, monthLabel: monthLabel(ym), status,
+    rows, totals: cur.totals, prev,
+    admissions: admissionsList, lateSessions,
+    hasData: cur.totals.sessions > 0
+  };
+}
+
+// Strengths, focus areas and notes, all derived from the numbers above.
+function reportObservations(r){
+  const positives = [], improvements = [], notes = [];
+  const t = r.totals;
+  const rr = v => Math.round(v);
+
+  if(!r.hasData){
+    notes.push(`No sessions were logged for this teacher in ${r.monthLabel}.`);
+    return { positives, improvements, notes };
+  }
+
+  // Hours: target vs actual
+  const targets = r.rows.filter(x => x.planned > 0);
+  if(targets.length && r.status !== 'future'){
+    const which = targets.length === 1 ? targets[0].name : `all ${targets.length} classes that have a target`;
+    if(r.status === 'in_progress'){
+      const ok = targets.filter(x => x.hoursStatus === 'met' || x.hoursStatus === 'on_track');
+      if(ok.length === targets.length) positives.push(`On track for the planned hours in ${which} so far this month.`);
+      else if(ok.length) positives.push(`On track for the planned hours so far in ${listNames(ok.map(x => x.name))}.`);
+      targets.filter(x => x.hoursStatus === 'behind').forEach(x =>
+        improvements.push(`${x.name}: ${fmtHours(x.actual)} of ${fmtHours(x.planned)} planned hours so far, which is behind the pace expected at this point in the month.`));
+    }else{
+      const met = targets.filter(x => x.hoursStatus === 'met');
+      if(met.length === targets.length) positives.push(`Delivered the full planned hours in ${which} (${fmtHours(t.actualOnTargets)} of ${fmtHours(t.plannedHours)} hours).`);
+      else if(met.length) positives.push(`Met the planned hours in ${met.length} of ${targets.length} classes: ${listNames(met.map(x => x.name))}.`);
+      targets.filter(x => x.hoursStatus === 'short').forEach(x =>
+        improvements.push(`${x.name}: delivered ${fmtHours(x.actual)} of ${fmtHours(x.planned)} planned hours (${fmtHours(x.shortBy)} hours short). Please plan make-up sessions, or tell the office if the target should change.`));
+    }
+  }
+
+  // Attendance and absences (compared on the rounded figure the report shows)
+  if(t.attendanceRate !== null){
+    const rate = rr(t.attendanceRate);
+    if(rate >= 90) positives.push(`Strong attendance: ${rate}% overall (${t.physical + t.online} attended, ${t.absent} absent).`);
+    else{
+      const good = r.rows.filter(x => x.attendanceRate !== null && rr(x.attendanceRate) >= 90);
+      if(good.length) positives.push(`High attendance (90% or more) in ${listNames(good.map(x => x.name))}.`);
+    }
+    if(r.prev && r.prev.attendanceRate !== null){
+      const d = rate - rr(r.prev.attendanceRate);
+      if(d >= 3) positives.push(`Attendance improved by ${d} points compared with ${r.prev.label}.`);
+      else if(d <= -5) improvements.push(`Overall attendance fell by ${-d} points compared with ${r.prev.label} (${rr(r.prev.attendanceRate)}% to ${rate}%).`);
+    }
+    r.rows.filter(x => x.attendanceRate !== null && rr(x.attendanceRate) < 70).forEach(x =>
+      improvements.push(`${x.name}: attendance was ${rr(x.attendanceRate)}% (${plural(x.absent, 'absence')} over ${plural(x.sessions, 'session')}). Consider following up with absent students and their parents.`));
+  }
+
+  // Punctuality (only sessions that had a scheduled time can be measured)
+  if(t.measured > 0){
+    if(t.late === 0) positives.push(`Started every measured session on time or early (${plural(t.measured, 'session')}).`);
+    else if(t.late / t.measured <= 0.1) positives.push(`Mostly punctual: ${t.measured - t.late} of ${t.measured} measured sessions started on time.`);
+    if(t.late === 1){
+      const x = r.lateSessions[0];
+      improvements.push(`One session started more than ${REPORT_LATE_MIN} minutes late: ${fmtShortDate(x.date)}, ${x.className} (${x.minutes} min late).`);
+    }else if(t.late > 1){
+      const avgLate = r.lateSessions.reduce((a,x) => a + x.minutes, 0) / r.lateSessions.length;
+      const shown = r.lateSessions.slice(0,5).map(x => `${fmtShortDate(x.date)} (${x.minutes} min)`).join(', ');
+      const more = r.lateSessions.length > 5 ? ` and ${r.lateSessions.length - 5} more` : '';
+      improvements.push(`${t.late} of ${t.measured} measured sessions started more than ${REPORT_LATE_MIN} minutes late, by ${rr(avgLate)} minutes on average: ${shown}${more}.`);
+    }
+    if(r.prev && r.prev.avgStartDiff !== null && t.avgStartDiff !== null && r.prev.avgStartDiff - t.avgStartDiff >= 3){
+      positives.push(`Start times improved compared with ${r.prev.label} (average ${fmtSigned(t.avgStartDiff)} min versus ${fmtSigned(r.prev.avgStartDiff)} min from schedule).`);
+    }
+  }
+  if(t.over > 0) improvements.push(`${plural(t.over, 'session')} ran more than ${REPORT_LATE_MIN} minutes past the scheduled end time.`);
+
+  // New admissions
+  if(r.admissions.length){
+    positives.push(`${plural(r.admissions.length, 'new student')} joined your classes: ${listNames(r.admissions.map(a => `${a.name} (${a.className})`), 5)}.`);
+  }
+
+  // Notes about how to read the report (not criticism of the teacher)
+  if(r.status === 'in_progress') notes.push(`${r.monthLabel} is still in progress, so these figures are to date.`);
+  if(t.unmeasured > 0) notes.push(`${plural(t.unmeasured, 'session')} had no scheduled time on the calendar, so punctuality could not be measured for ${t.unmeasured === 1 ? 'it' : 'them'}.`);
+  const noTarget = r.rows.filter(x => !(x.planned > 0) && x.sessions > 0);
+  if(noTarget.length) notes.push(`No monthly hours target is set for ${listNames(noTarget.map(x => x.name))}, so ${noTarget.length === 1 ? 'its' : 'their'} hours are not compared with a plan.`);
+  if(t.plannedHours > 0 && Math.abs(t.actualHours - t.actualOnTargets) > 0.05){
+    notes.push(`Hours delivered (${fmtHours(t.actualHours)}) includes ${fmtHours(t.actualHours - t.actualOnTargets)} hours in classes that have no target; the percentage compares only the ${fmtHours(t.actualOnTargets)} hours in classes that do.`);
+  }
+  if(r.rows.some(x => x.isOverride)) notes.push('An asterisk (*) marks a class whose target was set specifically for this month.');
+
+  if(!positives.length) positives.push("No particular strengths stood out in this month's figures.");
+  if(!improvements.length) improvements.push("Nothing needs attention based on this month's figures.");
+  return { positives, improvements, notes };
+}
+
+// ---------- Report page (HTML for the on-screen preview and the PDF) ----------
+const REPORT_COLORS = { good:'#8A6D10', goodFill:'#C9A227', bad:'#B33A3A', neutral:'#6B7690', neutralFill:'#C9CEDA' };
+
+function reportHoursStatus(x){
+  switch(x.hoursStatus){
+    case 'met':       return { label:'Target met', color:REPORT_COLORS.good, fill:REPORT_COLORS.goodFill };
+    case 'on_track':  return { label:'On track', color:REPORT_COLORS.good, fill:REPORT_COLORS.goodFill };
+    case 'short':     return { label:`Short by ${fmtHours(x.shortBy)} hrs`, color:REPORT_COLORS.bad, fill:REPORT_COLORS.bad };
+    case 'behind':    return { label:'Behind pace', color:REPORT_COLORS.bad, fill:REPORT_COLORS.bad };
+    case 'upcoming':  return { label:'Upcoming', color:REPORT_COLORS.neutral, fill:REPORT_COLORS.neutralFill };
+    default:          return { label:'No target set', color:REPORT_COLORS.neutral, fill:REPORT_COLORS.neutralFill };
+  }
+}
+
+function renderTeacherReportHtml(r){
+  const e = escapeHtml, t = r.totals;
+  const obs = reportObservations(r);
+  const pctText = v => v === null ? '—' : `${Math.round(v)}%`;
+  const hoursPctAll = t.plannedHours > 0 ? t.actualOnTargets / t.plannedHours * 100 : null;
+  const prevDelta = (r.prev && r.prev.attendanceRate !== null && t.attendanceRate !== null)
+    ? Math.round(t.attendanceRate) - Math.round(r.prev.attendanceRate) : null;
+
+  const kpis = [
+    { l:'Sessions held', v:t.sessions, f:`in ${t.classesWithSessions} ${t.classesWithSessions === 1 ? 'class' : 'classes'}` },
+    { l:'Hours delivered', v:fmtHours(t.actualHours), f: t.plannedHours > 0 ? `${fmtHours(t.actualOnTargets)} of ${fmtHours(t.plannedHours)} hrs planned (${pctText(hoursPctAll)})` : 'no hours target set' },
+    { l:'Attendance rate', v:pctText(t.attendanceRate), f: prevDelta === null ? `${t.physical + t.online} attended` : `${prevDelta >= 0 ? '+' : ''}${prevDelta} pts vs ${e(r.prev.label)}` },
+    { l:'Absences', v:t.absent, f:`${t.physical + t.online} attended, ${t.absent} absent` },
+    { l:'New admissions', v:r.admissions.length, f:'joined your classes' },
+    { l:'Start time vs schedule', v: t.measured ? (Math.abs(t.avgStartDiff) < 1 ? 'On time' : `${fmtSigned(t.avgStartDiff)} min`) : '—',
+      f: t.measured ? `${t.late} late of ${t.measured} measured` : 'no scheduled times to compare' }
+  ];
+
+  const hoursRows = r.rows.map(x=>{
+    const st = reportHoursStatus(x);
+    const width = x.hoursPct === null ? 0 : Math.min(100, x.hoursPct);
+    return `<tr>
+      <td>${e(x.name)}${x.isOverride ? ' *' : ''}</td>
+      <td>${e(x.grade || '—')}</td>
+      <td class="num">${x.planned > 0 ? fmtHours(x.planned) : '—'}</td>
+      <td class="num">${fmtHours(x.actual)}</td>
+      <td style="width:26%;"><div class="rp-bar"><i style="width:${width}%; background:${st.fill};"></i></div></td>
+      <td class="num">${x.hoursPct === null ? '—' : Math.round(x.hoursPct) + '%'}</td>
+      <td style="color:${st.color}; font-weight:700;">${e(st.label)}</td>
+    </tr>`;
+  }).join('');
+  const hoursTotal = `<tr class="rp-total"><td colspan="2">Total (classes with a target)</td>
+      <td class="num">${t.plannedHours > 0 ? fmtHours(t.plannedHours) : '—'}</td><td class="num">${fmtHours(t.actualOnTargets)}</td>
+      <td></td><td class="num">${hoursPctAll === null ? '—' : Math.round(hoursPctAll) + '%'}</td><td></td></tr>`;
+
+  const attRows = r.rows.filter(x => x.sessions > 0).map(x=>`<tr>
+      <td>${e(x.name)}</td><td class="num">${x.sessions}</td><td class="num">${x.physical}</td><td class="num">${x.online}</td>
+      <td class="num" style="font-weight:700;">${x.absent}</td>
+      <td class="num" style="font-weight:700; color:${x.attendanceRate !== null && Math.round(x.attendanceRate) < 70 ? REPORT_COLORS.bad : (x.attendanceRate !== null && Math.round(x.attendanceRate) >= 90 ? REPORT_COLORS.good : '#16233F')};">${pctText(x.attendanceRate)}</td>
+    </tr>`).join('');
+  const attTotal = `<tr class="rp-total"><td>Total</td><td class="num">${t.sessions}</td><td class="num">${t.physical}</td><td class="num">${t.online}</td><td class="num">${t.absent}</td><td class="num">${pctText(t.attendanceRate)}</td></tr>`;
+
+  const lateShown = r.lateSessions.slice(0, 12);
+  const lateTable = r.lateSessions.length ? `
+    <table class="rp-table" style="margin-top:8px;">
+      <thead><tr><th>Date</th><th>Class</th><th class="num">Scheduled</th><th class="num">Started</th><th class="num">Late by</th></tr></thead>
+      <tbody>${lateShown.map(x=>`<tr><td>${e(fmtShortDate(x.date))}</td><td>${e(x.className)}</td><td class="num">${e(x.expected)}</td><td class="num">${e(x.actual)}</td><td class="num" style="color:${REPORT_COLORS.bad}; font-weight:700;">${x.minutes} min</td></tr>`).join('')}</tbody>
+    </table>${r.lateSessions.length > lateShown.length ? `<div class="rp-small">and ${r.lateSessions.length - lateShown.length} more late starts</div>` : ''}` : '';
+
+  const punctSummary = t.measured
+    ? `${plural(t.measured, 'session')} had a scheduled start time. ${t.late === 0 ? 'All started on time or early.' : `${t.late} started more than ${REPORT_LATE_MIN} minutes late.`} ${t.over > 0 ? `${plural(t.over, 'session')} ran more than ${REPORT_LATE_MIN} minutes past the scheduled end.` : ''}`
+    : 'No sessions this month had a scheduled start time on the calendar, so punctuality could not be measured.';
+
+  const admShown = r.admissions.slice(0, 15);
+  const admBlock = r.admissions.length
+    ? `<table class="rp-table"><thead><tr><th>Date</th><th>Student</th><th>Class</th></tr></thead><tbody>${admShown.map(a=>`<tr><td>${e(fmtShortDate(a.date))}</td><td>${e(a.name)}</td><td>${e(a.className)}</td></tr>`).join('')}</tbody></table>${r.admissions.length > admShown.length ? `<div class="rp-small">and ${r.admissions.length - admShown.length} more</div>` : ''}`
+    : '<div class="rp-small">No new admissions to your classes this month.</div>';
+
+  const today = new Date();
+  const preparedOn = `${today.getDate()} ${MONTH_ABBR[today.getMonth()]} ${today.getFullYear()}`;
+  const classList = r.rows.length ? listNames(r.rows.map(x => x.name), 6) : '—';
+
+  if(!r.hasData){
+    return `<div class="rp-head"><div class="rp-brand"><img src="logo.png" alt=""><div><div class="org">Eminent Edification</div><div class="sub">Monthly Teacher Report</div></div></div>
+      <div class="rp-title"><div class="t">${e(r.teacher.name)}</div><div class="m">${e(r.monthLabel)}</div></div></div>
+      <div class="rp-sec"><div class="rp-small" style="font-size:13px;">${e(obs.notes[0] || 'No sessions were logged.')}</div></div>`;
+  }
+
+  return `
+  <div class="rp-head">
+    <div class="rp-brand"><img src="logo.png" alt=""><div><div class="org">Eminent Edification</div><div class="sub">Monthly Teacher Report</div></div></div>
+    <div class="rp-title"><div class="t">${e(r.teacher.name)}</div><div class="m">${e(r.monthLabel)}</div></div>
+  </div>
+  <div class="rp-meta"><span>Classes: <b>${e(classList)}</b></span><span>Prepared ${e(preparedOn)}</span></div>
+
+  <div class="rp-comments" id="rpCommentsBlock">
+    <div class="rp-h">Comments</div>
+    <textarea id="rpCommentsInput" class="rp-comments-input" rows="4" placeholder="Optional. Write your own comments here, or use “Draft comments with AI”. Whatever is in this box prints on the report."></textarea>
+    <div id="rpCommentsPrint" class="rp-comments-print"></div>
+  </div>
+
+  <div class="rp-kpis">${kpis.map(k=>`<div class="rp-kpi"><div class="l">${e(k.l)}</div><div class="v">${e(k.v)}</div><div class="f">${k.f}</div></div>`).join('')}</div>
+
+  <div class="rp-two">
+    <div class="rp-box good"><h4>What went well</h4><ul>${obs.positives.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>
+    <div class="rp-box focus"><h4>Where to focus next month</h4><ul>${obs.improvements.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>
+  </div>
+
+  <div class="rp-sec"><div class="rp-h">1. Hours: target vs actual</div>
+    <table class="rp-table"><thead><tr><th>Class</th><th>Grade</th><th class="num">Target (hrs)</th><th class="num">Actual (hrs)</th><th>Progress</th><th class="num">%</th><th>Status</th></tr></thead>
+    <tbody>${hoursRows}${hoursTotal}</tbody></table></div>
+
+  <div class="rp-sec"><div class="rp-h">2. Attendance and absences</div>
+    <table class="rp-table"><thead><tr><th>Class</th><th class="num">Sessions</th><th class="num">Physical</th><th class="num">Online</th><th class="num">Absent</th><th class="num">Attendance</th></tr></thead>
+    <tbody>${attRows}${attTotal}</tbody></table></div>
+
+  <div class="rp-sec"><div class="rp-h">3. Punctuality</div>
+    <div class="rp-small" style="font-size:12px;">${e(punctSummary)}</div>${lateTable}</div>
+
+  <div class="rp-sec"><div class="rp-h">4. New admissions</div>${admBlock}</div>
+
+  ${obs.notes.length ? `<div class="rp-notes"><b>Notes</b><ul>${obs.notes.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>` : ''}
+  <div class="rp-foot">Eminent Edification · Figures are taken from the session, admissions and planned-hours records in The Register.</div>`;
+}
+
+// ---------- Teacher list, preview window, PDF and AI draft ----------
+function renderTeacherReportList(){
+  const wrap = document.getElementById('teacherReportList');
+  const monthInput = document.getElementById('tr_month');
+  if(!monthInput.value) monthInput.value = localMonthString(-1);   // default: last month, the one you report on
+  const ym = monthInput.value;
+  if(!teachers.length){ wrap.innerHTML = '<div class="empty">Add teachers and classes first.</div>'; return; }
+
+  const rows = [...teachers].sort((a,b) => a.name.localeCompare(b.name)).map(t=>{
+    const r = buildTeacherMonthReport(t.id, ym);
+    const tt = r.totals;
+    const hours = tt.plannedHours > 0 ? `${fmtHours(tt.actualOnTargets)} / ${fmtHours(tt.plannedHours)}` : (tt.actualHours > 0 ? fmtHours(tt.actualHours) : '—');
+    return `<tr>
+      <td class="txt">${escapeHtml(t.name)}</td>
+      <td>${tt.sessions || '—'}</td>
+      <td>${r.hasData ? hours : '—'}</td>
+      <td>${r.hasData && tt.attendanceRate !== null ? Math.round(tt.attendanceRate) + '%' : '—'}</td>
+      <td>${r.hasData ? tt.absent : '—'}</td>
+      <td>${r.hasData ? r.admissions.length : '—'}</td>
+      <td>${r.hasData && tt.measured ? `${tt.late} / ${tt.measured}` : '—'}</td>
+      <td><button class="ghost" ${r.hasData ? '' : 'disabled'} onclick="openTeacherReport('${t.id}')">${r.hasData ? 'Open report' : 'No sessions'}</button></td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `<table><thead><tr><th>Teacher</th><th>Sessions</th><th>Hours (done / planned)</th><th>Attendance</th><th>Absences</th><th>New admissions</th><th>Late starts</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function setReportStatus(html){ document.getElementById('rpStatus').innerHTML = html; }
+const REPORT_DEFAULT_HINT = 'In the print window that opens, set Destination to “Save as PDF” and turn off “Headers and footers”.';
+
+function openTeacherReport(teacherId){
+  const teacher = teachers.find(t => t.id === teacherId);
+  if(!teacher) return;
+  const ym = document.getElementById('tr_month').value || localMonthString(-1);
+  const data = buildTeacherMonthReport(teacherId, ym);
+  currentReport = { teacher, ym, data, syncComments: null };
+
+  const paper = document.getElementById('rpPaper');
+  paper.innerHTML = renderTeacherReportHtml(data);
+
+  const input = document.getElementById('rpCommentsInput');
+  const block = document.getElementById('rpCommentsBlock');
+  const mirror = document.getElementById('rpCommentsPrint');
+  const key = `${teacherId}|${ym}`;
+  if(input && block && mirror){
+    // The box is what you edit on screen; its text is mirrored into a plain
+    // block that is what actually prints (and is hidden when empty).
+    const sync = () => {
+      reportComments[key] = input.value;
+      mirror.textContent = input.value;
+      block.classList.toggle('has-text', !!input.value.trim());
+    };
+    input.value = reportComments[key] || '';
+    input.addEventListener('input', sync);
+    currentReport.syncComments = sync;
+    sync();
+  }
+
+  document.getElementById('rpAiBtn').style.display = data.hasData ? '' : 'none';
+  document.getElementById('rpPrintBtn').style.display = '';
+  setReportStatus(REPORT_DEFAULT_HINT);
+  document.body.classList.add('printing-report');
+  const overlay = document.getElementById('reportOverlay');
+  overlay.style.display = 'block';
+  overlay.scrollTop = 0;
+}
+window.openTeacherReport = openTeacherReport;
+
+function closeTeacherReport(){
+  document.getElementById('reportOverlay').style.display = 'none';
+  document.body.classList.remove('printing-report');
+  currentReport = null;
+}
+
+// Chrome suggests the page title as the PDF file name, so name it properly.
+function printCurrentReport(){
+  if(!currentReport) return;
+  reportSavedTitle = document.title;
+  document.title = `${currentReport.teacher.name} - ${currentReport.data.monthLabel} - Teacher Report`;
+  window.print();
+}
+
+function reportAiErrorHtml(body){
+  const known = body && INSIGHT_ERRORS[body.error];
+  const msg = known || 'The AI draft could not be created. You can still write your own comments in the box.';
+  const detail = body && body.detail ? ` <span style="font-family:var(--font-mono);">(${escapeHtml(body.detail)})</span>` : '';
+  return `${msg}${detail}`;
+}
+
+// What the AI is allowed to see: the computed figures and the same strengths
+// and focus areas printed in the report. No session notes, no student names.
+function buildReportFacts(r){
+  const obs = reportObservations(r), t = r.totals, round1 = n => Math.round(n * 10) / 10;
+  return {
+    teacher: r.teacher.name,
+    month: r.monthLabel,
+    monthStatus: r.status,
+    sessions: t.sessions,
+    hours: { planned: round1(t.plannedHours), delivered: round1(t.actualHours),
+      byClass: r.rows.map(x => ({ class: x.name, planned: round1(x.planned), delivered: round1(x.actual), status: x.hoursStatus })) },
+    attendance: { ratePercent: t.attendanceRate === null ? null : Math.round(t.attendanceRate), attended: t.physical + t.online, absent: t.absent,
+      byClass: r.rows.filter(x => x.sessions > 0).map(x => ({ class: x.name, ratePercent: x.attendanceRate === null ? null : Math.round(x.attendanceRate), absent: x.absent })) },
+    punctuality: { measuredSessions: t.measured, lateSessions: t.late, ranOverSessions: t.over,
+      averageStartMinutesVsSchedule: t.avgStartDiff === null ? null : Math.round(t.avgStartDiff) },
+    newAdmissions: r.admissions.length,
+    previousMonth: r.prev ? { month: r.prev.label, attendanceRatePercent: r.prev.attendanceRate === null ? null : Math.round(r.prev.attendanceRate) } : null,
+    strengths: obs.positives,
+    focusAreas: obs.improvements
+  };
+}
+
+async function draftReportComments(){
+  const rep = currentReport;
+  if(!rep || !requireBackend()) return;
+  const input = document.getElementById('rpCommentsInput');
+  if(input.value.trim() && !confirm('Replace the comments you have already written with an AI draft?')) return;
+  const btn = document.getElementById('rpAiBtn');
+  btn.disabled = true; btn.textContent = 'Drafting…';
+  setReportStatus('Asking the AI to draft a short summary…');
+  try{
+    const res = await fetch(`${apiBase()}/api/reports/teacher-summary`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ facts: buildReportFacts(rep.data) })
+    });
+    if(handleAuthFailure(res.status)) return;
+    const body = await res.json().catch(() => null);
+    if(currentReport !== rep) return;               // report was closed while waiting
+    if(!res.ok || !body || typeof body.text !== 'string'){
+      setReportStatus(reportAiErrorHtml(body));
+      return;
+    }
+    input.value = body.text;
+    rep.syncComments && rep.syncComments();
+    setReportStatus('AI draft added. It is only a draft: please read it, correct anything that is not right, or delete it and write your own.');
+  }catch(err){
+    console.error(err);
+    if(currentReport === rep) setReportStatus('Could not reach the server. You can still write your own comments in the box.');
+  }finally{
+    btn.disabled = false; btn.textContent = 'Draft comments with AI';
+  }
+}
+
+document.getElementById('tr_month').addEventListener('change', renderTeacherReportList);
+document.getElementById('tr_lastMonthBtn').addEventListener('click', () => { document.getElementById('tr_month').value = localMonthString(-1); renderTeacherReportList(); });
+document.getElementById('tr_thisMonthBtn').addEventListener('click', () => { document.getElementById('tr_month').value = localMonthString(0); renderTeacherReportList(); });
+document.getElementById('rpPrintBtn').addEventListener('click', printCurrentReport);
+document.getElementById('rpAiBtn').addEventListener('click', draftReportComments);
+document.getElementById('rpCloseBtn').addEventListener('click', closeTeacherReport);
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && currentReport) closeTeacherReport(); });
+window.addEventListener('afterprint', () => { if(reportSavedTitle !== null){ document.title = reportSavedTitle; reportSavedTitle = null; } });
 
 // ---------- AI Insights ----------
 // What to tell the person for each reason the server can report. The

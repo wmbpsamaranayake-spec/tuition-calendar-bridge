@@ -2441,6 +2441,30 @@ function renderAll(){
 }
 
 // ---------- AI Insights ----------
+// What to tell the person for each reason the server can report. The
+// "Admin fix" part is only for whoever manages the server settings.
+const INSIGHT_ERRORS = {
+  no_api_key:      'This server has no Anthropic API key. <i>Admin fix:</i> add ANTHROPIC_API_KEY in Render (key from console.anthropic.com), then try again.',
+  auth:            'Anthropic did not accept this server\'s API key. It may be wrong, revoked or expired. <i>Admin fix:</i> create a new key at console.anthropic.com and update ANTHROPIC_API_KEY in Render.',
+  credit_or_limit: 'Anthropic says the account is out of credit or has reached a spending limit. <i>Admin fix:</i> check Plans &amp; Billing at console.anthropic.com.',
+  model_not_found: 'Anthropic does not recognise the AI model this server is set to use. <i>Admin fix:</i> set INSIGHTS_MODEL in Render to a current Claude model name.',
+  rate_limited:    'Too many requests to Anthropic right now. Please wait a minute and try again.',
+  overloaded:      'Anthropic is busy right now. Please try again in a minute.',
+  bad_output:      'The AI replied, but not in a form the dashboard could read. Please try again.',
+  timeout:         'The AI took too long to answer. Please try again.',
+  network:         'The server could not reach Anthropic. Please try again in a moment.',
+  api_error:       'Anthropic returned an error.'
+};
+
+function insightsErrorHtml(body){
+  const known = body && INSIGHT_ERRORS[body.error];
+  const message = known || 'The server could not generate insights. Please try again in a moment.';
+  const detail = body && body.detail
+    ? `<div style="margin-top:8px; font-size:11.5px; color:var(--ink-soft); font-family:var(--font-mono);">Details: ${escapeHtml(body.detail)}${body.requestId ? ` (request ${escapeHtml(body.requestId)})` : ''}</div>`
+    : '';
+  return `<div class="empty">${message}${detail}</div>`;
+}
+
 document.getElementById('generateAiBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('generateAiBtn');
   const out = document.getElementById('aiOutput');
@@ -2459,19 +2483,21 @@ document.getElementById('generateAiBtn').addEventListener('click', async ()=>{
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(summary)
     });
-    if(res.status === 500){
-      const body = await res.json().catch(()=>({}));
-      if(body.error === 'no_api_key'){
-        out.innerHTML = '<div class="empty">Your server doesn\'t have an Anthropic API key set yet. Add ANTHROPIC_API_KEY to its environment variables on Render (get one at console.anthropic.com), then try again.</div>';
-        return;
-      }
+    if(handleAuthFailure(res.status)) return; // signed out: back to the login page
+    const body = await res.json().catch(()=>null);
+    if(!res.ok){
+      out.innerHTML = insightsErrorHtml(body);
+      return;
     }
-    if(!res.ok) throw new Error('bad_response');
-    const { items } = await res.json();
-    out.innerHTML = `<div class="ai-box">${items.map(it=>`<div class="ai-item"><span class="tag">${it.tag||'GENERAL'}</span>${it.text}</div>`).join('')}</div>`;
+    const items = body && Array.isArray(body.items) ? body.items : [];
+    if(!items.length){
+      out.innerHTML = '<div class="empty">The AI had nothing to suggest this time. Please try again.</div>';
+      return;
+    }
+    out.innerHTML = `<div class="ai-box">${items.map(it=>`<div class="ai-item"><span class="tag">${escapeHtml(it.tag||'GENERAL')}</span>${escapeHtml(it.text)}</div>`).join('')}</div>`;
   }catch(err){
     console.error(err);
-    out.innerHTML = '<div class="empty">Could not generate insights right now. Please try again in a moment.</div>';
+    out.innerHTML = '<div class="empty">Could not reach the server. Check your connection and try again.</div>';
   }finally{
     btn.disabled = false; btn.textContent = 'Generate insights';
   }

@@ -616,6 +616,66 @@ app.post('/api/insights', requireAuth(), async (req, res) => {
   }
 });
 
+// ---------- AI-drafted comments for a teacher's monthly report ----------
+// The report's figures, strengths and focus areas are computed in the browser
+// from the real records. This only asks Claude to put those facts into a short
+// paragraph, which a person reads and edits before anything is sent.
+app.post('/api/reports/teacher-summary', requireAuth(), async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'no_api_key' });
+  }
+  const facts = req.body && req.body.facts;
+  if (!facts || typeof facts !== 'object') {
+    return res.status(400).json({ error: 'missing_facts' });
+  }
+  const factsJson = JSON.stringify(facts);
+  if (factsJson.length > 20000) {
+    return res.status(413).json({ error: 'facts_too_large' });
+  }
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        model: INSIGHTS_MODEL,
+        max_tokens: 700,
+        messages: [{
+          role: 'user',
+          content: `You are writing the opening comments of a monthly report that a private tuition institute sends to one of its teachers. Use ONLY the facts below. Do not invent or alter any number, date, class or name, and do not mention anything that is not in the facts. Write 4 to 6 sentences of plain prose in a respectful, encouraging and specific tone, addressed to the teacher as "you". Begin with what went well, then say clearly what to focus on next month. If a monthStatus is "in_progress", say the figures are to date. No headings, bullet points, markdown, greeting or sign-off.\n\nFACTS:\n${factsJson}`
+        }]
+      })
+    });
+
+    const requestId = response.headers.get('request-id') || null;
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const code = classifyAnthropicError(response.status, data);
+      const detail = ((data && data.error && data.error.message) || '').slice(0, 300);
+      console.error(`Teacher summary: Anthropic returned ${response.status} (${code}) model=${INSIGHTS_MODEL} request-id=${requestId}: ${detail}`);
+      return res.status(502).json({ error: code, status: response.status, detail, requestId });
+    }
+
+    const text = ((data && data.content) || [])
+      .filter(b => b.type === 'text').map(b => b.text).join('\n')
+      .replace(/\*\*/g, '').trim();
+    if (!text) {
+      console.error(`Teacher summary: empty reply (stop_reason=${data && data.stop_reason}, request-id=${requestId})`);
+      return res.status(502).json({ error: 'bad_output', detail: 'The AI returned no text.', requestId });
+    }
+    res.json({ text });
+  } catch (e) {
+    const timedOut = e && (e.name === 'TimeoutError' || e.name === 'AbortError');
+    console.error('Teacher summary: request failed:', e && e.message, e && e.cause ? e.cause : '');
+    res.status(timedOut ? 504 : 502).json({ error: timedOut ? 'timeout' : 'network' });
+  }
+});
+
 // ---------- Startup: connect to MongoDB Atlas, then start listening ----------
 async function start() {
   if (!process.env.MONGODB_URI) {

@@ -166,6 +166,15 @@
   details.report-month > summary::-webkit-details-marker{display:none;}
   details.report-month > summary::before{content:'▸  ';}
   details.report-month[open] > summary::before{content:'▾  ';}
+  /* Pagination */
+  .pager{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line);}
+  .pager-info{font-size:12px; color:var(--ink-soft); font-family:var(--font-mono);}
+  .pager-controls{display:flex; align-items:center; gap:4px; flex-wrap:wrap;}
+  .pager-btn{padding:5px 10px; font-size:12px; min-width:32px;}
+  .pager-btn.active{background:var(--brass); color:var(--pine-dark); border-color:var(--brass); font-weight:700;}
+  .pager-btn:disabled{opacity:0.35; cursor:default;}
+  .pager-gap{color:var(--ink-soft); padding:0 4px; font-size:12px;}
+  .pager-size{width:auto; padding:5px 8px; font-size:12px; margin-left:8px;}
   table.report-table{margin:6px 0 10px 18px; width:calc(100% - 18px);}
   table.report-table th, table.report-table td{padding:6px 8px; font-size:12px;}
 
@@ -349,7 +358,7 @@
     </div>
 
     <div class="card" style="margin-top:16px;">
-      <div class="toprow"><h3 style="margin:0;">Recent Sessions</h3></div>
+      <div class="toprow"><h3 style="margin:0;">Session Log</h3></div>
       <div id="sessionsTableWrap"></div>
     </div>
   </section>
@@ -603,6 +612,79 @@ let currentExpected = { value: null, source: null, finish: null }; // source: 'c
 const todayLabel = document.getElementById('todayLabel');
 todayLabel.textContent = new Date().toLocaleDateString(undefined,{weekday:'long', year:'numeric', month:'long', day:'numeric'});
 
+// ---------- Pagination ----------
+// Shared pager for the long data lists. Pages are cut client-side from the
+// data already loaded, so each list keeps its own page number and size.
+const PAGE_SIZES = [10, 25, 50, 100];
+const pagerDefaults = { teachers:10, classes:10, users:10, admissions:25, sessions:25 };
+const pagerState = {};
+const pagerRenderers = {
+  teachers:   ()=>renderTeachersTable(),
+  classes:    ()=>renderClassesTable(),
+  admissions: ()=>renderAdmissionsTable(),
+  sessions:   ()=>renderSessionsTable(),
+  users:      ()=>renderUsersTable()
+};
+
+function getPager(key){
+  if(!pagerState[key]) pagerState[key] = { page:1, size: pagerDefaults[key] || 25 };
+  return pagerState[key];
+}
+
+// Returns the rows for the current page plus the info the pager needs.
+// The page number is clamped, so deleting the last row on a page (or
+// setting page = Infinity to jump to the end) always lands somewhere valid.
+function paginate(items, key){
+  const st = getPager(key);
+  const total = items.length;
+  const pages = Math.max(1, Math.ceil(total / st.size));
+  st.page = Math.min(Math.max(1, st.page), pages);
+  const start = (st.page - 1) * st.size;
+  return { rows: items.slice(start, start + st.size), total, pages, page: st.page, size: st.size, start };
+}
+
+function pageWindow(page, pages){
+  const nums = [...new Set([1, pages, page-1, page, page+1])]
+    .filter(n => n >= 1 && n <= pages)
+    .sort((a,b) => a-b);
+  const out = [];
+  nums.forEach((n,i)=>{ if(i > 0 && n - nums[i-1] > 1) out.push('…'); out.push(n); });
+  return out;
+}
+
+function pagerHtml(key, p){
+  if(p.total <= PAGE_SIZES[0]) return ''; // too short to need paging
+  const from = p.start + 1;
+  const to = Math.min(p.start + p.size, p.total);
+  const btn = (label, n, o={}) =>
+    `<button type="button" class="ghost pager-btn${o.active ? ' active' : ''}" ${o.disabled ? 'disabled' : ''} onclick="gotoPage('${key}',${n})">${label}</button>`;
+  const nums = pageWindow(p.page, p.pages)
+    .map(n => n === '…' ? '<span class="pager-gap">…</span>' : btn(n, n, { active: n === p.page }))
+    .join('');
+  const sizes = PAGE_SIZES
+    .map(sz => `<option value="${sz}"${sz === p.size ? ' selected' : ''}>${sz} / page</option>`)
+    .join('');
+  return `<div class="pager">
+    <span class="pager-info">Showing ${from}–${to} of ${p.total}</span>
+    <div class="pager-controls">
+      ${btn('‹ Prev', p.page - 1, { disabled: p.page <= 1 })}
+      ${nums}
+      ${btn('Next ›', p.page + 1, { disabled: p.page >= p.pages })}
+      <select class="pager-size" onchange="setPageSize('${key}', this.value)">${sizes}</select>
+    </div>
+  </div>`;
+}
+
+function gotoPage(key, n){ getPager(key).page = n; pagerRenderers[key](); }
+function setPageSize(key, size){
+  const st = getPager(key);
+  st.size = parseInt(size, 10) || st.size;
+  st.page = 1;
+  pagerRenderers[key]();
+}
+window.gotoPage = gotoPage;
+window.setPageSize = setPageSize;
+
 // ---------- Storage helpers ----------
 // All business data (teachers, classes, sessions, admissions) lives on
 // YOUR server (the same one that talks to Google Calendar), so multiple
@@ -726,14 +808,15 @@ async function loadUsers(){
 function renderUsersTable(){
   const wrap = document.getElementById('usersTableWrap');
   if(!users.length){ wrap.innerHTML = '<div class="empty">No logins yet.</div>'; return; }
+  const pg = paginate(users, 'users');
   wrap.innerHTML = `<table><thead><tr><th>Username</th><th>Name</th><th>Role</th><th></th></tr></thead><tbody>
-    ${users.map(u=>`<tr>
+    ${pg.rows.map(u=>`<tr>
       <td class="txt">${u.username}</td>
       <td class="txt">${u.name || ''}</td>
       <td class="txt">${u.role}</td>
       <td><button class="ghost" onclick="editUser('${u.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteUser('${u.id}')">Remove</button></td>
     </tr>`).join('')}
-  </tbody></table>`;
+  </tbody></table>${pagerHtml('users', pg)}`;
 }
 
 async function deleteUser(id){
@@ -795,6 +878,7 @@ document.getElementById('userForm').addEventListener('submit', async (e)=>{
       }
       if(!res.ok) throw new Error('save_failed');
       e.target.reset();
+      getPager('users').page = Infinity; // new login lands at the end
     }
     users = await loadUsers();
     renderUsersTable();
@@ -1058,6 +1142,7 @@ document.getElementById('classForm').addEventListener('submit', async (e)=>{
   }else{
     const item = await apiAdd('classes', payload);
     classes.push(item);
+    getPager('classes').page = Infinity; // new class lands at the end
     e.target.reset();
     initScheduleDaysInput();
   }
@@ -1114,6 +1199,7 @@ document.getElementById('teacherForm').addEventListener('submit', async (e)=>{
   }else{
     const item = await apiAdd('teachers', payload);
     teachers.push(item);
+    getPager('teachers').page = Infinity; // new teacher lands at the end
     e.target.reset();
   }
   populateTeacherSelect();
@@ -1159,6 +1245,7 @@ document.getElementById('admissionForm').addEventListener('submit', async (e)=>{
   }else{
     const item = await apiAdd('admissions', payload);
     admissions.push(item);
+    getPager('admissions').page = 1; // newest first
     e.target.reset();
     document.getElementById('a_date').valueAsDate = new Date();
   }
@@ -1219,6 +1306,7 @@ document.getElementById('sessionForm').addEventListener('submit', async (e)=>{
   }else{
     const item = await apiAdd('sessions', payload);
     sessions.push(item);
+    getPager('sessions').page = 1; // newest first
     e.target.reset();
     document.getElementById('s_date').valueAsDate = new Date();
     document.getElementById('s_expected').value='';
@@ -1459,8 +1547,9 @@ function renderTeachersTable(){
   const wrap = document.getElementById('teachersTableWrap');
   if(!teachers.length){ wrap.innerHTML = '<div class="empty">No teachers added yet.</div>'; return; }
   const canDelete = currentUser && currentUser.role === 'admin';
+  const pg = paginate(teachers, 'teachers');
   wrap.innerHTML = `<table><thead><tr><th>Name</th><th>Mobile</th><th>SMS alerts</th><th>Classes assigned</th><th></th></tr></thead><tbody>
-    ${teachers.map(t=>{
+    ${pg.rows.map(t=>{
       const count = classes.filter(c=>c.teacherId===t.id).length;
       return `<tr>
         <td class="txt">${t.name}</td>
@@ -1470,37 +1559,40 @@ function renderTeachersTable(){
         <td><button class="ghost" onclick="editTeacher('${t.id}')" style="margin-right:6px;">Edit</button>${canDelete ? `<button class="ghost danger" onclick="deleteItem('teachers','${t.id}')">Remove</button>` : ''}</td>
       </tr>`;
     }).join('')}
-  </tbody></table>`;
+  </tbody></table>${pagerHtml('teachers', pg)}`;
 }
 
 function renderClassesTable(){
   const wrap = document.getElementById('classesTableWrap');
   if(!classes.length){ wrap.innerHTML = '<div class="empty">No classes added yet.</div>'; return; }
   const canDelete = currentUser && currentUser.role === 'admin';
+  const pg = paginate(classes, 'classes');
   wrap.innerHTML = `<table><thead><tr><th>Class</th><th>Grade</th><th>Subject</th><th>Teacher</th><th>Planned Hrs/mo</th><th>Schedule</th><th></th></tr></thead><tbody>
-    ${classes.map(c=>{
+    ${pg.rows.map(c=>{
       const sched = DAYS.filter(([k])=>c.schedule && c.schedule[k]).map(([k,l])=>`${l} ${c.schedule[k]}`).join(', ') || 'Not set';
       return `<tr><td class="txt">${c.name}</td><td class="txt">${c.grade || '—'}</td><td class="txt">${c.subject}</td><td class="txt">${teacherName(c.teacherId)}</td><td>${c.plannedMonthlyHours || '—'}</td><td class="txt">${sched}</td><td><button class="ghost" onclick="editClass('${c.id}')" style="margin-right:6px;">Edit</button>${canDelete ? `<button class="ghost danger" onclick="deleteItem('classes','${c.id}')">Remove</button>` : ''}</td></tr>`;
     }).join('')}
-  </tbody></table>`;
+  </tbody></table>${pagerHtml('classes', pg)}`;
 }
 
 function renderAdmissionsTable(){
   const wrap = document.getElementById('admissionsTableWrap');
   if(!admissions.length){ wrap.innerHTML = '<div class="empty">No admissions logged yet.</div>'; return; }
   const sorted = [...admissions].sort((a,b)=> b.date.localeCompare(a.date));
+  const pg = paginate(sorted, 'admissions');
   wrap.innerHTML = `<table><thead><tr><th>Date</th><th>Student</th><th>Class</th><th></th></tr></thead><tbody>
-    ${sorted.map(a=>`<tr><td>${a.date}</td><td class="txt">${a.name}</td><td class="txt">${className(a.classId)}</td><td><button class="ghost" onclick="editAdmission('${a.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('admissions','${a.id}')">Remove</button></td></tr>`).join('')}
-  </tbody></table>`;
+    ${pg.rows.map(a=>`<tr><td>${a.date}</td><td class="txt">${a.name}</td><td class="txt">${className(a.classId)}</td><td><button class="ghost" onclick="editAdmission('${a.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('admissions','${a.id}')">Remove</button></td></tr>`).join('')}
+  </tbody></table>${pagerHtml('admissions', pg)}`;
 }
 
 function renderSessionsTable(){
   const wrap = document.getElementById('sessionsTableWrap');
   if(!sessions.length){ wrap.innerHTML = '<div class="empty">No sessions logged yet.</div>'; return; }
-  const sorted = [...sessions].sort((a,b)=> b.date.localeCompare(a.date)).slice(0,25);
+  const sorted = [...sessions].sort((a,b)=> b.date.localeCompare(a.date));
+  const pg = paginate(sorted, 'sessions');
   const canEdit = currentUser && currentUser.role === 'admin';
   wrap.innerHTML = `<table><thead><tr><th>Date</th><th>Class</th><th>Teacher</th><th>Expected</th><th>Actual start</th><th>Finish</th><th>Physical</th><th>Online</th><th>Absent</th><th></th></tr></thead><tbody>
-    ${sorted.map(s=>`<tr>
+    ${pg.rows.map(s=>`<tr>
       <td>${s.date}</td>
       <td class="txt">${className(s.classId)}</td>
       <td class="txt">${classTeacherName(s.classId)}</td>
@@ -1515,7 +1607,7 @@ function renderSessionsTable(){
         ${canEdit ? `<button class="ghost" onclick="editSession('${s.id}')" style="margin-right:6px;">Edit</button><button class="ghost danger" onclick="deleteItem('sessions','${s.id}')">Remove</button>` : ''}
       </td>
     </tr>`).join('')}
-  </tbody></table>`;
+  </tbody></table>${pagerHtml('sessions', pg)}`;
 }
 
 // ---------- Analytics ----------

@@ -522,6 +522,44 @@ app.post('/api/settings', requireAuth('admin'), async (req, res) => {
   }
 });
 
+// ---------- AI insights ----------
+// The model is configurable without a code change: set INSIGHTS_MODEL in
+// Render's environment variables to switch to a different Claude model.
+const INSIGHTS_MODEL = process.env.INSIGHTS_MODEL || 'claude-sonnet-4-6';
+const INSIGHT_TAGS = ['PUNCTUALITY', 'ATTENDANCE', 'ADMISSIONS', 'GENERAL'];
+
+// Turns an Anthropic error response into a short code the dashboard can explain.
+function classifyAnthropicError(status, body) {
+  const message = (body && body.error && body.error.message) || '';
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'model_not_found';
+  if (status === 429) return 'rate_limited';
+  if (status === 529 || status >= 500) return 'overloaded';
+  if (status === 400 && /credit|billing|spend|usage limit/i.test(message)) return 'credit_or_limit';
+  return 'api_error';
+}
+
+// The model is asked for a bare JSON array, but tolerate code fences or a
+// stray sentence around it, and drop anything that isn't a usable insight.
+function parseInsights(text) {
+  const cleaned = String(text || '').replace(/```json|```/g, '').trim();
+  let parsed = null;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (_) {
+    const start = cleaned.indexOf('[');
+    const end = cleaned.lastIndexOf(']');
+    if (start !== -1 && end > start) {
+      try { parsed = JSON.parse(cleaned.slice(start, end + 1)); } catch (_) { /* fall through */ }
+    }
+  }
+  if (!Array.isArray(parsed)) return null;
+  const items = parsed
+    .filter(it => it && typeof it.text === 'string' && it.text.trim())
+    .map(it => ({ tag: INSIGHT_TAGS.includes(it.tag) ? it.tag : 'GENERAL', text: it.text.trim() }));
+  return items.length ? items : null;
+}
+
 app.post('/api/insights', requireAuth(), async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'no_api_key' });
@@ -535,23 +573,46 @@ app.post('/api/insights', requireAuth(), async (req, res) => {
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
+      signal: AbortSignal.timeout(45000),
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
+        model: INSIGHTS_MODEL,
+        max_tokens: 2000,
         messages: [{
           role: 'user',
           content: `You are an operations analyst for a private tuition center. Based on this JSON summary of recent sessions, teacher punctuality, attendance, and admissions, produce 3-6 short, specific, actionable insights or recommendations a center owner could act on this week. Respond ONLY with a JSON array of objects like [{"tag":"PUNCTUALITY","text":"..."}] with no markdown, no code fences, no preamble. Valid tags: PUNCTUALITY, ATTENDANCE, ADMISSIONS, GENERAL.\n\nDATA:\n${JSON.stringify(summary)}`
         }]
       })
     });
-    const data = await response.json();
-    const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
-    const clean = textBlocks.replace(/```json|```/g, '').trim();
-    const items = JSON.parse(clean);
+
+    const requestId = response.headers.get('request-id') || null;
+    const data = await response.json().catch(() => null);
+
+    // Anthropic rejected the request (bad key, no credit, wrong model, busy...).
+    // Log the real reason and pass a specific code back, instead of failing
+    // later with a confusing JSON error.
+    if (!response.ok) {
+      const code = classifyAnthropicError(response.status, data);
+      const detail = ((data && data.error && data.error.message) || '').slice(0, 300);
+      console.error(`Insights: Anthropic returned ${response.status} (${code}) model=${INSIGHTS_MODEL} request-id=${requestId}: ${detail}`);
+      return res.status(502).json({ error: code, status: response.status, detail, requestId });
+    }
+
+    const text = ((data && data.content) || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const items = parseInsights(text);
+    if (!items) {
+      const stopReason = data && data.stop_reason;
+      console.error(`Insights: could not read the model's reply (stop_reason=${stopReason}, request-id=${requestId}). It began: ${text.slice(0, 200)}`);
+      return res.status(502).json({
+        error: 'bad_output',
+        detail: stopReason === 'max_tokens' ? 'The reply was cut off before it finished.' : 'The reply was not in the expected format.',
+        requestId
+      });
+    }
     res.json({ items });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'insights_failed' });
+    const timedOut = e && (e.name === 'TimeoutError' || e.name === 'AbortError');
+    console.error('Insights: request failed:', e && e.message, e && e.cause ? e.cause : '');
+    res.status(timedOut ? 504 : 502).json({ error: timedOut ? 'timeout' : 'network' });
   }
 });
 
